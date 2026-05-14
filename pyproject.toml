@@ -1,0 +1,23 @@
+[project]
+name = "ccm"
+version = "0.1.0"
+description = "Claude Code Manager — manage Claude Code projects, sessions, and memory"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "QuocTang" }]
+requires-python = ">=3.10"
+dependencies = [
+    "typer>=0.12",
+    "rich>=13.7",
+    "textual>=0.79",
+]
+
+[project.scripts]
+ccm = "ccm.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ccm"]
