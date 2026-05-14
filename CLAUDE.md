@@ -52,10 +52,10 @@ Three layers, deliberately separated so the domain code stays UI-agnostic:
   MemoryView, ConfirmScreen), `widgets.py` (HeaderBar + option factories),
   `_markup.py` (`safe()`/`styled()` helpers), `__init__.py` (`CCMApp`).
 
-`palette.py` and `paths.py` sit at the top of `src/ccm/` because both `cli/`
-and `tui/` depend on them. `palette.SPINNER_FRAMES` (`✶✷✸✹✺✻✼✽`) is the
-canonical 8-frame asterisk spinner — also embedded in `docs/main.js`,
-so change it in both places.
+`palette.py`, `paths.py`, and `_markup.py` sit at the top of `src/ccm/`
+because both `cli/` and `tui/` depend on them. `palette.SPINNER_FRAMES`
+(`✶✷✸✹✺✻✼✽`) is the canonical 8-frame asterisk spinner — also embedded
+in `docs/main.js`, so change it in both places.
 
 ## Release
 
@@ -90,6 +90,28 @@ These bit us during development — don't relearn them:
   dict literal. `core.sessions._parse_message_field` uses `ast.literal_eval`.
   Don't try `json.loads` on it.
 
+- **`<local-command-stdout>` lives in two record shapes.** Newer Claude Code
+  versions emit it as `{"type":"system","subtype":"local_command","content":
+  "<local-command-stdout>…"}`; older versions emit it as a regular user
+  message whose `content` starts with `<local-command-stdout>`. `iter_events`
+  handles both — if you change the pairing logic, exercise both formats
+  (`tests/core/test_sessions_events.py` covers each).
+
+- **`iter_events()` is the canonical session-content generator, not
+  `iter_messages()`.** It returns `MessageEvent | CommandEvent | BashEvent`
+  and coalesces slash-command invocations with their `<local-command-stdout>`
+  records (and `<bash-input>` with `<bash-stdout>`/`<bash-stderr>`) so each
+  logical interaction surfaces as a single event. `iter_messages` is a thin
+  backward-compat wrapper that drops the non-message events. New code in
+  `cli/`, `tui/`, and `core/export.py` should consume events, not flat
+  `(ts, role, text)` tuples.
+
+- **`<local-command-stdout>` content can contain ANSI escape sequences.**
+  `/model` and several other slash commands embed `\x1b[1m…\x1b[22m` for
+  bold/color. Run snippets through `_markup.strip_ansi()` before `safe()` —
+  otherwise `safe()` escapes the `[` and the literal `[1m…[22m` text leaks
+  into the render.
+
 - **Don't define `_render` on a Textual screen/widget you write.** `Widget._render`
   is internal and Textual calls it to get the `Visual` for the screen. Naming a
   helper `_render` shadows it and Textual gets a `rich.text.Text` instead of a
@@ -105,7 +127,7 @@ These bit us during development — don't relearn them:
   `super().__init__(self._build())`, then `set_interval` from `on_mount` — never
   call `update()` synchronously from `on_mount`.
 
-- **Markup escaping needs `tui._markup.safe()`, not `rich.markup.escape`.**
+- **Markup escaping needs `ccm._markup.safe()`, not `rich.markup.escape`.**
   The stock escape only escapes `[tag]`-shaped runs; real session content has
   bare `[` (e.g. next to box-drawing) that still trips the parser. `safe()`
   escapes every `[` and `\`. Use `styled(text, style)` for the standard

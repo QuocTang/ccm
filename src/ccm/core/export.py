@@ -4,7 +4,7 @@ import json
 import shutil
 from pathlib import Path
 
-from .sessions import SessionSummary, iter_messages
+from .sessions import BashEvent, CommandEvent, MessageEvent, SessionSummary, iter_events
 
 
 def export_session_markdown(session: SessionSummary, dest: Path) -> Path:
@@ -25,14 +25,39 @@ def export_session_markdown(session: SessionSummary, dest: Path) -> Path:
     lines.append(f"- **messages**: {session.message_count}")
     lines.append("")
 
-    for ts, role, text in iter_messages(session.path):
-        header = f"## {role}"
-        if ts:
-            header += f"  _{ts}_"
-        lines.append(header)
-        lines.append("")
-        lines.append(text)
-        lines.append("")
+    for ev in iter_events(session.path):
+        if isinstance(ev, MessageEvent):
+            header = f"## {ev.role}"
+            if ev.timestamp:
+                header += f"  _{ev.timestamp}_"
+            lines.append(header)
+            lines.append("")
+            lines.append(ev.text)
+            lines.append("")
+        elif isinstance(ev, CommandEvent):
+            header = f"## `{ev.name}`"
+            if ev.args:
+                header += f" {ev.args}"
+            if ev.timestamp:
+                header += f"  _{ev.timestamp}_"
+            lines.append(header)
+            lines.append("")
+            if ev.output:
+                lines.append("```")
+                lines.append(ev.output)
+                lines.append("```")
+                lines.append("")
+        elif isinstance(ev, BashEvent):
+            header = "## `$ " + (ev.command or "") + "`"
+            if ev.timestamp:
+                header += f"  _{ev.timestamp}_"
+            lines.append(header)
+            lines.append("")
+            if ev.output:
+                lines.append("```")
+                lines.append(ev.output)
+                lines.append("```")
+                lines.append("")
 
     dest.write_text("\n".join(lines), encoding="utf-8")
     return dest

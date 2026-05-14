@@ -9,12 +9,56 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.table import Table
 
+from .._markup import safe, strip_ansi
 from ..core import export as export_mod
-from ..core.sessions import delete_session, iter_messages, list_sessions
-from ..palette import CORAL, CORAL_SOFT, CREAM, CREAM_DIM, DANGER, DIM
+from ..core.sessions import (
+    BashEvent,
+    CommandEvent,
+    MessageEvent,
+    delete_session,
+    iter_events,
+    list_sessions,
+)
+from ..palette import CORAL, CORAL_SOFT, CREAM, CREAM_DIM, DANGER, DIM, FAINT
 from ..paths import fmt_size
 from ._app import app
 from ._common import console, fmt_time, require_project, require_session
+
+
+def _compact_snippet(s: str, max_len: int = 100) -> tuple[str, bool]:
+    """Return (first-line snippet, truncated?) — used for one-line command output."""
+    lines = strip_ansi(s).splitlines()
+    if not lines:
+        return "", False
+    first = lines[0]
+    has_more = len(lines) > 1
+    if len(first) > max_len:
+        return first[:max_len].rstrip(), True
+    return first, has_more
+
+
+def _format_command_line(ev: CommandEvent) -> str:
+    parts = [f"[{FAINT}]\\[command][/]"]
+    if ev.name:
+        parts.append(f"[bold {CORAL}]{safe(ev.name)}[/]")
+    if ev.args:
+        parts.append(f"[{CORAL_SOFT}]{safe(ev.args)}[/]")
+    if ev.output:
+        snippet, truncated = _compact_snippet(ev.output)
+        tail = "…" if truncated else ""
+        parts.append(f"[{DIM}]→[/] [{CREAM_DIM}]{safe(snippet)}{tail}[/]")
+    return " ".join(parts)
+
+
+def _format_bash_line(ev: BashEvent) -> str:
+    parts = [f"[{FAINT}]\\[bash][/]"]
+    if ev.command:
+        parts.append(f"[bold {CORAL_SOFT}]{safe(ev.command)}[/]")
+    if ev.output:
+        snippet, truncated = _compact_snippet(ev.output)
+        tail = "…" if truncated else ""
+        parts.append(f"[{DIM}]→[/] [{CREAM_DIM}]{safe(snippet)}{tail}[/]")
+    return " ".join(parts)
 
 
 @app.command("sessions", help="List sessions inside a project.")
@@ -88,21 +132,29 @@ def cmd_view(
     )
 
     shown = 0
-    for ts, role, text in iter_messages(session.path):
+    for ev in iter_events(session.path):
         if limit and shown >= limit:
             console.print(
                 f"[{DIM}]... (showing first {limit}; pass --limit 0 for all)[/{DIM}]"
             )
             break
-        style = CORAL if role == "user" else CORAL_SOFT
-        console.rule(f"[{style}]{role}[/{style}]  [{DIM}]{ts or ''}[/{DIM}]", style=DIM)
-        if raw:
-            console.print(text)
-        else:
-            try:
-                console.print(Markdown(text))
-            except Exception:
-                console.print(text)
+        if isinstance(ev, MessageEvent):
+            style = CORAL if ev.role == "user" else CORAL_SOFT
+            console.rule(
+                f"[{style}]{ev.role}[/{style}]  [{DIM}]{ev.timestamp or ''}[/{DIM}]",
+                style=DIM,
+            )
+            if raw:
+                console.print(ev.text)
+            else:
+                try:
+                    console.print(Markdown(ev.text))
+                except Exception:
+                    console.print(ev.text)
+        elif isinstance(ev, CommandEvent):
+            console.print(_format_command_line(ev))
+        elif isinstance(ev, BashEvent):
+            console.print(_format_bash_line(ev))
         shown += 1
 
 

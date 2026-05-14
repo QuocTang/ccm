@@ -2,10 +2,53 @@ from __future__ import annotations
 
 import ast
 import json
+import re
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Iterator
+
+
+_COMMAND_NAME_RE = re.compile(r"<command-name>(.*?)</command-name>", re.DOTALL)
+_COMMAND_ARGS_RE = re.compile(r"<command-args>(.*?)</command-args>", re.DOTALL)
+_BASH_INPUT_RE = re.compile(r"<bash-input>(.*?)</bash-input>", re.DOTALL)
+_BASH_STDOUT_RE = re.compile(r"<bash-stdout>(.*?)</bash-stdout>", re.DOTALL)
+_BASH_STDERR_RE = re.compile(r"<bash-stderr>(.*?)</bash-stderr>", re.DOTALL)
+_LOCAL_STDOUT_RE = re.compile(
+    r"<local-command-stdout>(.*?)</local-command-stdout>", re.DOTALL
+)
+
+
+@dataclass
+class MessageEvent:
+    """A renderable user/assistant turn."""
+
+    timestamp: str | None
+    role: str
+    text: str
+
+
+@dataclass
+class CommandEvent:
+    """A `/slash` command invocation, optionally paired with its stdout."""
+
+    timestamp: str | None
+    name: str           # e.g. "/recap"
+    args: str           # text after the command name; often empty
+    output: str | None  # filled in when the paired local-command-stdout arrives
+
+
+@dataclass
+class BashEvent:
+    """A `!shell` invocation from the user, optionally paired with its output."""
+
+    timestamp: str | None
+    command: str
+    output: str         # combined stdout/stderr; "" if no output record found
+
+
+SessionEvent = MessageEvent | CommandEvent | BashEvent
 
 
 @dataclass
@@ -169,9 +212,47 @@ def find_session(project_dir: Path, identifier: str) -> SessionSummary | None:
     return None
 
 
-def iter_messages(jsonl_path: Path):
-    """Yield (timestamp, role, text) for renderable user/assistant turns."""
-    with jsonl_path.open("r", encoding="utf-8", errors="replace") as fp:
+def _match_tag(regex: re.Pattern, text: str) -> str | None:
+    m = regex.search(text)
+    return m.group(1).strip() if m else None
+
+
+def iter_events(jsonl_path: Path) -> Iterator[SessionEvent]:
+    """Yield structured events from a session JSONL.
+
+    Slash commands and `!bash` invocations span multiple JSONL records — the
+    invocation in one, the output in a later one. This generator coalesces
+    them so each logical interaction surfaces as a single event:
+
+    * `<local-command-caveat>` records are dropped.
+    * `<command-name>` user records become a pending `CommandEvent`.
+    * `<local-command-stdout>` records fill in the pending command's `output`
+      and yield it. They show up in two shapes depending on Claude Code
+      version: a `type:system,subtype:local_command` record, or a regular
+      user message whose content starts with `<local-command-stdout>`.
+    * `<bash-input>` user records become a pending `BashEvent`.
+    * `<bash-stdout>` / `<bash-stderr>` user records fill in the pending
+      bash event's output, then yield it.
+    * Anything else with text content yields a `MessageEvent`.
+
+    A pending event without a matching output record is still yielded (with
+    `output=None` for commands or `output=""` for bash) so `/clear` and
+    similar zero-output commands aren't lost.
+    """
+    pending: CommandEvent | BashEvent | None = None
+
+    def flush() -> Iterator[SessionEvent]:
+        nonlocal pending
+        if pending is not None:
+            out = pending
+            pending = None
+            yield out
+
+    try:
+        fp = jsonl_path.open("r", encoding="utf-8", errors="replace")
+    except OSError:
+        return
+    with fp:
         for line in fp:
             line = line.strip()
             if not line:
@@ -180,9 +261,24 @@ def iter_messages(jsonl_path: Path):
                 obj = json.loads(line)
             except json.JSONDecodeError:
                 continue
+
             t = obj.get("type")
-            if t not in ("user", "assistant"):
+            ts = obj.get("timestamp")
+
+            if t == "system" and obj.get("subtype") == "local_command":
+                output = _match_tag(_LOCAL_STDOUT_RE, obj.get("content", "") or "")
+                if isinstance(pending, CommandEvent):
+                    pending.output = output or ""
+                    yield from flush()
+                elif output is not None:
+                    yield from flush()
+                    yield CommandEvent(timestamp=ts, name="", args="", output=output)
                 continue
+
+            if t not in ("user", "assistant"):
+                yield from flush()
+                continue
+
             msg = _parse_message_field(obj.get("message"))
             if not msg:
                 continue
@@ -190,7 +286,68 @@ def iter_messages(jsonl_path: Path):
             text = _extract_text(msg.get("content")).strip()
             if not text:
                 continue
-            yield obj.get("timestamp"), role, text
+
+            if text.startswith("<local-command-caveat>"):
+                continue
+
+            if text.startswith(
+                ("<command-name>", "<command-message>", "<command-args>")
+            ):
+                yield from flush()
+                pending = CommandEvent(
+                    timestamp=ts,
+                    name=_match_tag(_COMMAND_NAME_RE, text) or "",
+                    args=_match_tag(_COMMAND_ARGS_RE, text) or "",
+                    output=None,
+                )
+                continue
+
+            if text.startswith("<local-command-stdout>"):
+                output = _match_tag(_LOCAL_STDOUT_RE, text) or ""
+                if isinstance(pending, CommandEvent):
+                    pending.output = output
+                    yield from flush()
+                else:
+                    yield from flush()
+                    yield CommandEvent(timestamp=ts, name="", args="", output=output)
+                continue
+
+            if text.startswith("<bash-input>"):
+                yield from flush()
+                pending = BashEvent(
+                    timestamp=ts,
+                    command=_match_tag(_BASH_INPUT_RE, text) or "",
+                    output="",
+                )
+                continue
+
+            if text.startswith("<bash-stdout>") or text.startswith("<bash-stderr>"):
+                stdout = _match_tag(_BASH_STDOUT_RE, text) or ""
+                stderr = _match_tag(_BASH_STDERR_RE, text) or ""
+                combined = stdout + (("\n" + stderr) if stderr else "")
+                if isinstance(pending, BashEvent):
+                    pending.output = combined
+                    yield from flush()
+                else:
+                    yield from flush()
+                    yield BashEvent(timestamp=ts, command="", output=combined)
+                continue
+
+            yield from flush()
+            yield MessageEvent(timestamp=ts, role=role, text=text)
+
+    yield from flush()
+
+
+def iter_messages(jsonl_path: Path) -> Iterator[tuple[str | None, str, str]]:
+    """Yield (timestamp, role, text) for renderable user/assistant turns.
+
+    Backwards-compatible wrapper around `iter_events` — drops command and
+    bash events. New callers should prefer `iter_events` directly.
+    """
+    for ev in iter_events(jsonl_path):
+        if isinstance(ev, MessageEvent):
+            yield ev.timestamp, ev.role, ev.text
 
 
 def delete_session(session: SessionSummary) -> None:

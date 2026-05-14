@@ -13,9 +13,12 @@ from textual.widgets import Footer, OptionList, Static
 from ..core import memory as memory_mod
 from ..core.projects import Project, delete_project, list_projects
 from ..core.sessions import (
+    BashEvent,
+    CommandEvent,
+    MessageEvent,
     SessionSummary,
     delete_session,
-    iter_messages,
+    iter_events,
     list_sessions,
 )
 from ..core.stats import compute_stats
@@ -32,9 +35,43 @@ from ..palette import (
     FAINT,
     RULE,
 )
+from .._markup import safe, strip_ansi, styled
 from ..paths import fmt_size
-from ._markup import styled
 from .widgets import HeaderBar, make_project_option, make_session_option
+
+
+def _compact_snippet(s: str, max_len: int = 100) -> tuple[str, bool]:
+    lines = strip_ansi(s).splitlines()
+    if not lines:
+        return "", False
+    first = lines[0]
+    if len(first) > max_len:
+        return first[:max_len].rstrip(), True
+    return first, len(lines) > 1
+
+
+def _render_command_line(ev: CommandEvent) -> str:
+    parts = [f"[{FAINT}]\\[command][/]"]
+    if ev.name:
+        parts.append(f"[bold {CORAL}]{safe(ev.name)}[/]")
+    if ev.args:
+        parts.append(f"[{CORAL_SOFT}]{safe(ev.args)}[/]")
+    if ev.output:
+        snippet, truncated = _compact_snippet(ev.output)
+        tail = "…" if truncated else ""
+        parts.append(f"[{DIM}]→[/] [{CREAM_DIM}]{safe(snippet)}{tail}[/]")
+    return " ".join(parts)
+
+
+def _render_bash_line(ev: BashEvent) -> str:
+    parts = [f"[{FAINT}]\\[bash][/]"]
+    if ev.command:
+        parts.append(f"[bold {CORAL_SOFT}]{safe(ev.command)}[/]")
+    if ev.output:
+        snippet, truncated = _compact_snippet(ev.output)
+        tail = "…" if truncated else ""
+        parts.append(f"[{DIM}]→[/] [{CREAM_DIM}]{safe(snippet)}{tail}[/]")
+    return " ".join(parts)
 
 
 class ConfirmScreen(ModalScreen[bool]):
@@ -115,14 +152,25 @@ class SessionView(Screen):
         lines.append(f"   [{DIM}]msgs:[/]   [{CREAM_DIM}]{s.message_count}[/]")
         lines.append("")
 
-        for ts, role, text in iter_messages(s.path):
-            color = CORAL if role == "user" else CORAL_SOFT
-            lines.append(
-                f"[{RULE}]─[/] {styled(role, f'bold {color}')} "
-                f"{styled(ts or '', FAINT)}"
-            )
-            lines.append(styled(text, CREAM_DIM))
-            lines.append("")
+        prev_compact = False
+        for ev in iter_events(s.path):
+            if isinstance(ev, MessageEvent):
+                if prev_compact:
+                    lines.append("")
+                color = CORAL if ev.role == "user" else CORAL_SOFT
+                lines.append(
+                    f"[{RULE}]─[/] {styled(ev.role, f'bold {color}')} "
+                    f"{styled(ev.timestamp or '', FAINT)}"
+                )
+                lines.append(styled(ev.text, CREAM_DIM))
+                lines.append("")
+                prev_compact = False
+            elif isinstance(ev, CommandEvent):
+                lines.append(_render_command_line(ev))
+                prev_compact = True
+            elif isinstance(ev, BashEvent):
+                lines.append(_render_bash_line(ev))
+                prev_compact = True
         return "\n".join(lines)
 
 
