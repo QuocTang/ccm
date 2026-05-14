@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from rich.markup import escape
 from rich.style import Style
 from rich.text import Text
 from textual.app import ComposeResult
@@ -37,6 +36,16 @@ from ..paths import fmt_size
 from .widgets import HeaderBar, make_project_option, make_session_option
 
 
+def _safe(text: str) -> str:
+    """Aggressively escape so textual's markup parser never treats user
+    content as a tag. `rich.markup.escape` only escapes `[tag]`-shaped runs,
+    but session output can contain bare `[` (e.g. next to box-drawing
+    characters) that still trips the parser. Escaping `\\` first preserves
+    any already-escaped sequences.
+    """
+    return text.replace("\\", "\\\\").replace("[", "\\[")
+
+
 class ConfirmScreen(ModalScreen[bool]):
     BINDINGS = [
         Binding("y", "yes", "Confirm"),
@@ -65,7 +74,7 @@ class ConfirmScreen(ModalScreen[bool]):
     def compose(self) -> ComposeResult:
         body = (
             f"[bold {CORAL}]✻[/]  [bold {CREAM}]Confirm destructive action[/]\n\n"
-            f"[{CREAM_DIM}]{escape(self.message)}[/]\n\n"
+            f"[{CREAM_DIM}]{_safe(self.message)}[/]\n\n"
             f"[{DIM}]Press[/] [bold {CORAL}]y[/] [{DIM}]to confirm  ·  "
             f"[/][bold {CORAL}]n[/][{DIM}]/[/][bold {CORAL}]esc[/] [{DIM}]to cancel[/]"
         )
@@ -103,24 +112,24 @@ class SessionView(Screen):
         lines: list[str] = []
         lines.append(
             f"[bold {CORAL}]✻[/]  [bold {CREAM}]Session[/]  "
-            f"[{CORAL_SOFT}]{escape(s.session_id)}[/]"
+            f"[{CORAL_SOFT}]{_safe(s.session_id)}[/]"
         )
         if s.custom_title:
-            lines.append(f"   [{DIM}]title:[/]  [{CREAM_DIM}]{escape(s.custom_title)}[/]")
+            lines.append(f"   [{DIM}]title:[/]  [{CREAM_DIM}]{_safe(s.custom_title)}[/]")
         if s.cwd:
-            lines.append(f"   [{DIM}]cwd:[/]    [{CREAM_DIM}]{escape(s.cwd)}[/]")
+            lines.append(f"   [{DIM}]cwd:[/]    [{CREAM_DIM}]{_safe(s.cwd)}[/]")
         if s.git_branch:
-            lines.append(f"   [{DIM}]branch:[/] [{CREAM_DIM}]{escape(s.git_branch)}[/]")
+            lines.append(f"   [{DIM}]branch:[/] [{CREAM_DIM}]{_safe(s.git_branch)}[/]")
         lines.append(f"   [{DIM}]msgs:[/]   [{CREAM_DIM}]{s.message_count}[/]")
         lines.append("")
 
         for ts, role, text in iter_messages(s.path):
             color = CORAL if role == "user" else CORAL_SOFT
             lines.append(
-                f"[{RULE}]─[/] [bold {color}]{escape(role)}[/] "
-                f"[{FAINT}]{escape(ts or '')}[/]"
+                f"[{RULE}]─[/] [bold {color}]{_safe(role)}[/] "
+                f"[{FAINT}]{_safe(ts or '')}[/]"
             )
-            lines.append(f"[{CREAM_DIM}]{escape(text)}[/]")
+            lines.append(f"[{CREAM_DIM}]{_safe(text)}[/]")
             lines.append("")
         return "\n".join(lines)
 
@@ -150,7 +159,7 @@ class MemoryView(Screen):
         lines: list[str] = []
         lines.append(
             f"[bold {CORAL}]✻[/]  [bold {CREAM}]Memory[/]  "
-            f"[{CORAL}]⎯[/]  [{CREAM_DIM}]{escape(self.project.real_cwd)}[/]"
+            f"[{CORAL}]⎯[/]  [{CREAM_DIM}]{_safe(self.project.real_cwd)}[/]"
         )
         lines.append("")
         if not files:
@@ -158,7 +167,7 @@ class MemoryView(Screen):
             return "\n".join(lines)
         for f in files:
             lines.append(
-                f"[{CORAL}]⎿[/]  [bold {CREAM}]{escape(f.name)}[/]   "
+                f"[{CORAL}]⎿[/]  [bold {CREAM}]{_safe(f.name)}[/]   "
                 f"[{DIM}]({fmt_size(f.size_bytes)})[/]"
             )
             try:
@@ -168,7 +177,7 @@ class MemoryView(Screen):
                 lines.append("")
                 continue
             for line in content.splitlines():
-                lines.append(f"   [{CREAM_DIM}]{escape(line)}[/]")
+                lines.append(f"   [{CREAM_DIM}]{_safe(line)}[/]")
             lines.append("")
         return "\n".join(lines)
 

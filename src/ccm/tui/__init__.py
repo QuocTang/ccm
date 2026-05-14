@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from textual.app import App
+from typing import Iterable
+
+from textual.app import App, SystemCommand
+from textual.screen import Screen
 
 from ..palette import BG
 from .screens import MainScreen
@@ -20,6 +23,12 @@ class CCMApp(App):
 
     def on_mount(self) -> None:
         self.push_screen(MainScreen())
+
+    def get_system_commands(self, screen: Screen) -> Iterable[SystemCommand]:
+        for cmd in super().get_system_commands(screen):
+            if cmd.title == "Screenshot":
+                continue
+            yield cmd
 
 
 def run_tui() -> None:
