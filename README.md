@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/logo-full.png" alt="ccm" height="160" />
+<img src="assets/logo.png" alt="ccm" height="160" />
 
 **Claude Code Manager** — a CLI + TUI for everything Claude Code stores under `~/.claude/projects/`.
 
@@ -54,6 +54,7 @@ uv tool install .            # global, available as `ccm`
 uv sync --extra dev
 uv run ccm --help
 ```
+
 </details>
 
 <details>
@@ -62,6 +63,7 @@ uv run ccm --help
 ```bash
 uv tool install git+https://github.com/QuocTang/ccm
 ```
+
 </details>
 
 <details>
@@ -70,6 +72,7 @@ uv tool install git+https://github.com/QuocTang/ccm
 ```bash
 uvx --from git+https://github.com/QuocTang/ccm ccm ls
 ```
+
 </details>
 
 ## Usage
@@ -99,16 +102,16 @@ by `ccm sessions` is usually enough).
 
 ### TUI keys
 
-| Key             | Action                                  |
-| --------------- | --------------------------------------- |
-| `↑/↓` `j/k`     | Move cursor                             |
-| `h/l` `←/→`     | Focus projects / sessions pane          |
-| `Tab`           | Switch panes                            |
-| `Enter`         | Drill in (project → sessions → view)    |
-| `m`             | Show memory for highlighted project     |
-| `d`             | Delete focused project / session        |
-| `r`             | Refresh                                 |
-| `q` `Ctrl+C`    | Quit (or back inside a sub-screen)      |
+| Key          | Action                               |
+| ------------ | ------------------------------------ |
+| `↑/↓` `j/k`  | Move cursor                          |
+| `h/l` `←/→`  | Focus projects / sessions pane       |
+| `Tab`        | Switch panes                         |
+| `Enter`      | Drill in (project → sessions → view) |
+| `m`          | Show memory for highlighted project  |
+| `d`          | Delete focused project / session     |
+| `r`          | Refresh                              |
+| `q` `Ctrl+C` | Quit (or back inside a sub-screen)   |
 
 Inside a delete-confirm modal: `y` / `Enter` to confirm, `n` / `Esc` to cancel.
 
