@@ -1,0 +1,70 @@
+name: Release
+
+# Tag a commit with `v<X.Y.Z>` and push it. This workflow then:
+#   1. builds the sdist + wheel,
+#   2. publishes to PyPI via trusted publishing (no token needed),
+#   3. creates a GitHub Release with the built artifacts attached.
+#
+# One-time setup on PyPI (required before the first automated publish):
+#   https://pypi.org/manage/project/claudecm/settings/publishing/
+#   Add a pending publisher with:
+#     Owner=QuocTang  Repository=ccm  Workflow=release.yml  Environment=pypi
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+      - run: uv python install 3.12
+      - run: uv sync --extra dev --python 3.12
+      - run: uv run pytest -q
+      - run: uv build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish-pypi:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/claudecm/
+    permissions:
+      id-token: write     # trusted publishing
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  github-release:
+    needs: publish-pypi
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # let --generate-notes read past tags
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --generate-notes \
+            dist/*
