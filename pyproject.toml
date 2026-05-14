@@ -1,6 +1,6 @@
 [project]
 name = "claudecm"
-version = "0.1.2"
+version = "0.1.3"
 description = "Claude Code Manager — manage Claude Code projects, sessions, and memory"
 readme = "README.md"
 license = { text = "MIT" }
