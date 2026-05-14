@@ -4,6 +4,8 @@
 
 **Claude Code Manager** — a CLI + TUI for everything Claude Code stores under `~/.claude/projects/`.
 
+[![PyPI](https://img.shields.io/pypi/v/claudecm.svg)](https://pypi.org/project/claudecm/)
+[![Downloads](https://img.shields.io/pypi/dm/claudecm.svg)](https://pypi.org/project/claudecm/)
 [![License: MIT](https://img.shields.io/github/license/QuocTang/ccm.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![uv](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fastral-sh%2Fuv%2Fmain%2Fassets%2Fbadge%2Fv0.json)](https://docs.astral.sh/uv/)
@@ -20,13 +22,15 @@ URL-encoded path names.
 ## Quick start
 
 ```bash
-uv tool install git+https://github.com/QuocTang/ccm
+uv tool install claudecm
 ccm                  # launches the TUI
 ccm ls               # subcommand mode
 ccm stats            # disk-usage dashboard
 ```
 
-> Requires Python 3.10+ and [uv](https://docs.astral.sh/uv/).
+> Requires Python 3.10+ and [uv](https://docs.astral.sh/uv/) (or `pipx`/`pip` if you prefer).
+> The PyPI distribution is named **`claudecm`** (the unqualified `ccm` was
+> already taken). The console command stays `ccm`.
 
 ## Why ccm
 
@@ -43,25 +47,14 @@ are a one-way path encoding (`/home/q/my_projects/foo` →
 
 ## Installation
 
-<details>
-<summary><b>From source (latest)</b></summary>
+<details open>
+<summary><b>From PyPI (recommended)</b></summary>
 
 ```bash
-git clone https://github.com/QuocTang/ccm
-cd ccm
-uv tool install .            # global, available as `ccm`
-# or for dev work:
-uv sync --extra dev
-uv run ccm --help
-```
-
-</details>
-
-<details>
-<summary><b>Without cloning</b></summary>
-
-```bash
-uv tool install git+https://github.com/QuocTang/ccm
+uv tool install claudecm     # global, exposes `ccm`
+# alternatives:
+pipx install claudecm
+pip install --user claudecm
 ```
 
 </details>
@@ -70,7 +63,30 @@ uv tool install git+https://github.com/QuocTang/ccm
 <summary><b>Run without installing (one-off)</b></summary>
 
 ```bash
-uvx --from git+https://github.com/QuocTang/ccm ccm ls
+uvx --from claudecm ccm ls
+```
+
+</details>
+
+<details>
+<summary><b>From source (latest <code>main</code>)</b></summary>
+
+```bash
+git clone https://github.com/QuocTang/ccm
+cd ccm
+uv tool install .            # global
+# or for dev work:
+uv sync --extra dev
+uv run ccm --help
+```
+
+</details>
+
+<details>
+<summary><b>From a GitHub commit/branch</b></summary>
+
+```bash
+uv tool install git+https://github.com/QuocTang/ccm
 ```
 
 </details>
