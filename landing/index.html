@@ -1,0 +1,570 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ccm — Claude Code Manager</title>
+  <meta name="description" content="A CLI + TUI for everything Claude Code stores under ~/.claude/projects/. List projects, browse sessions, view, delete, export — without cd-ing into URL-encoded path names." />
+  <meta name="theme-color" content="#faf9f5" />
+  <meta property="og:title" content="ccm — Claude Code Manager" />
+  <meta property="og:description" content="Read, prune, and export everything Claude Code remembers. CLI + TUI in one tool." />
+  <meta property="og:type" content="website" />
+
+  <link rel="icon" type="image/png" href="logo.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- Scroll progress bar -->
+  <div class="scroll-progress" id="scrollProgress" aria-hidden="true"></div>
+
+  <!-- Floating spike-marks background -->
+  <div class="floaters" aria-hidden="true">
+    <svg class="floater f1" viewBox="0 0 24 24"><path d="M12 0 L13 9 L24 12 L13 15 L12 24 L11 15 L0 12 L11 9 Z"/></svg>
+    <svg class="floater f2" viewBox="0 0 24 24"><path d="M12 0 L13 9 L24 12 L13 15 L12 24 L11 15 L0 12 L11 9 Z"/></svg>
+    <svg class="floater f3" viewBox="0 0 24 24"><path d="M12 0 L13 9 L24 12 L13 15 L12 24 L11 15 L0 12 L11 9 Z"/></svg>
+    <svg class="floater f4" viewBox="0 0 24 24"><path d="M12 0 L13 9 L24 12 L13 15 L12 24 L11 15 L0 12 L11 9 Z"/></svg>
+    <svg class="floater f5" viewBox="0 0 24 24"><path d="M12 0 L13 9 L24 12 L13 15 L12 24 L11 15 L0 12 L11 9 Z"/></svg>
+  </div>
+
+  <!-- Top nav -->
+  <header class="topnav" id="topnav">
+    <div class="topnav-inner container">
+      <a class="brand" href="#top">
+        <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 0 L13 9 L24 12 L13 15 L12 24 L11 15 L0 12 L11 9 Z"/></svg>
+        <span class="brand-word">ccm</span>
+        <span class="brand-tag">Claude Code Manager</span>
+      </a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="#features">Features</a>
+        <a href="#tui">Demo</a>
+        <a href="#commands">Commands</a>
+        <a href="#install">Install</a>
+        <a href="https://github.com/QuocTang/ccm" target="_blank" rel="noopener">GitHub ↗</a>
+      </nav>
+      <div class="nav-right">
+        <span class="version-chip" id="versionChip">v0.1.2</span>
+        <a class="btn btn-primary btn-sm magnetic" href="#install">Install</a>
+      </div>
+    </div>
+  </header>
+
+  <main id="top">
+
+    <!-- ─── HERO ───────────────────────────────────────────── -->
+    <section class="hero">
+      <div class="container hero-grid">
+        <div class="hero-copy">
+          <span class="kicker reveal">
+            <svg class="kicker-mark" viewBox="0 0 24 24"><path d="M12 0 L13 9 L24 12 L13 15 L12 24 L11 15 L0 12 L11 9 Z"/></svg>
+            Claude Code Manager · v0.1.2
+          </span>
+          <h1 class="display-xl reveal" data-reveal-delay="60">
+            Everything<br/>Claude&nbsp;Code remembers,
+            <span class="ink-coral">
+              in one
+              <span class="brush-word">quiet</span>
+              place.
+            </span>
+          </h1>
+          <p class="lede reveal" data-reveal-delay="160">
+            <strong>ccm</strong> is a CLI and TUI for
+            <code>~/.claude/projects/</code> — list projects,
+            browse sessions, inspect memory, export to Markdown.
+            No daemon, no config, no <code>cd</code> into folders
+            named like <code>-home-q-my-projects-foo</code>.
+          </p>
+
+          <div class="cta-row reveal" data-reveal-delay="240">
+            <button class="btn btn-primary magnetic" id="copyInstall" data-copy="uv tool install claudecm">
+              <span class="btn-label">
+                <span class="btn-prompt">$</span>
+                <span class="btn-cmd">uv tool install claudecm</span>
+              </span>
+              <span class="btn-icon" aria-hidden="true">
+                <svg viewBox="0 0 16 16" width="14" height="14"><path d="M5 1.5h6a1 1 0 0 1 1 1V4h1.5a1 1 0 0 1 1 1v9.5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V13H2.5a1 1 0 0 1-1-1V2.5a1 1 0 0 1 1-1H5Zm0 1H2.5v9.5H4V5a1 1 0 0 1 1-1h6V2.5H5Zm0 2.5v9.5h8.5V5H5Z" fill="currentColor"/></svg>
+              </span>
+            </button>
+            <a class="btn btn-secondary" href="https://github.com/QuocTang/ccm" target="_blank" rel="noopener">
+              View on GitHub
+              <span aria-hidden="true" class="arrow">→</span>
+            </a>
+          </div>
+
+          <ul class="hero-meta reveal" data-reveal-delay="320">
+            <li><span class="dot dot-success"></span> Python 3.10+</li>
+            <li><span class="dot dot-amber"></span> MIT license</li>
+            <li><span class="dot dot-coral"></span> Three deps</li>
+            <li><span class="dot dot-teal"></span> Works offline</li>
+          </ul>
+        </div>
+
+        <!-- Hero TUI mockup -->
+        <div class="hero-mockup reveal" data-reveal-delay="120">
+          <div class="window">
+            <div class="window-chrome">
+              <span class="dot-mac r"></span>
+              <span class="dot-mac y"></span>
+              <span class="dot-mac g"></span>
+              <span class="window-title">ccm — ~/.claude/projects/</span>
+              <span class="window-spinner" id="heroSpinner">✶</span>
+            </div>
+            <div class="window-body tui">
+              <div class="tui-header">
+                <span class="tui-brand">
+                  <span class="tui-mark" id="tuiSpinner">✶</span>
+                  <span class="tui-word">ccm</span>
+                </span>
+                <span class="tui-sep">·</span>
+                <span class="tui-project" id="tuiProject">my_projects/ccm</span>
+                <span class="tui-flex"></span>
+                <span class="tui-kbd">q</span>
+                <span class="tui-kbdlbl">quit</span>
+              </div>
+              <div class="tui-panes">
+                <div class="tui-pane">
+                  <div class="tui-pane-title">Projects <span class="tui-count">9</span></div>
+                  <ul class="tui-list" id="projectsList">
+                    <li class="active"><span class="t-name">my_projects/ccm</span><span class="t-meta">14 sessions · 3.2 MB</span></li>
+                    <li><span class="t-name">work/anthropic-sdk</span><span class="t-meta">22 sessions · 6.1 MB</span></li>
+                    <li><span class="t-name">notes/research-2026</span><span class="t-meta">8 sessions · 1.4 MB</span></li>
+                    <li><span class="t-name">my_projects/agent-eval</span><span class="t-meta">31 sessions · 12 MB</span></li>
+                    <li><span class="t-name">scratch/quick-tests</span><span class="t-meta">3 sessions · 0.4 MB</span></li>
+                    <li><span class="t-name">work/claude-rag</span><span class="t-meta">17 sessions · 4.8 MB</span></li>
+                  </ul>
+                </div>
+                <div class="tui-pane">
+                  <div class="tui-pane-title">Sessions <span class="tui-count">14</span></div>
+                  <ul class="tui-list" id="sessionsList">
+                    <li class="active"><span class="t-name">build landing page</span><span class="t-meta">2m ago · 218 msgs</span></li>
+                    <li><span class="t-name">fix textual _size shadow</span><span class="t-meta">3h ago · 64 msgs</span></li>
+                    <li><span class="t-name">ci: actions for tests + pypi</span><span class="t-meta">yesterday · 110 msgs</span></li>
+                    <li><span class="t-name">memory inspector v2</span><span class="t-meta">2d ago · 42 msgs</span></li>
+                    <li><span class="t-name">stats: disk usage graph</span><span class="t-meta">3d ago · 88 msgs</span></li>
+                    <li><span class="t-name">export to markdown</span><span class="t-meta">5d ago · 31 msgs</span></li>
+                  </ul>
+                </div>
+              </div>
+              <div class="tui-footer">
+                <span><span class="tui-kbd">↑↓</span> move</span>
+                <span><span class="tui-kbd">Enter</span> open</span>
+                <span><span class="tui-kbd">m</span> memory</span>
+                <span><span class="tui-kbd">d</span> delete</span>
+                <span><span class="tui-kbd">r</span> refresh</span>
+              </div>
+            </div>
+          </div>
+          <div class="mockup-glow" aria-hidden="true"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── STATS STRIP ─────────────────────────────────────── -->
+    <section class="stats-strip">
+      <div class="container stats-grid">
+        <div class="stat reveal">
+          <div class="stat-num"><span class="counter" data-target="11">0</span></div>
+          <div class="stat-label">subcommands</div>
+        </div>
+        <div class="stat reveal" data-reveal-delay="80">
+          <div class="stat-num"><span class="counter" data-target="3">0</span></div>
+          <div class="stat-label">clean layers</div>
+        </div>
+        <div class="stat reveal" data-reveal-delay="160">
+          <div class="stat-num"><span class="counter" data-target="100">0</span><span class="unit">%</span></div>
+          <div class="stat-label">on disk · no daemon</div>
+        </div>
+        <div class="stat reveal" data-reveal-delay="240">
+          <div class="stat-num"><span class="counter" data-target="0">0</span></div>
+          <div class="stat-label">config files</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── PROBLEM ─────────────────────────────────────────── -->
+    <section class="problem">
+      <div class="container">
+        <div class="band-head reveal">
+          <span class="eyebrow">The problem</span>
+          <h2 class="display-lg"><code class="serif-code">ls&nbsp;~/.claude/projects/</code><br/>was never the answer.</h2>
+          <p class="lede on-dark">
+            Claude Code replaces both <code>/</code> and <code>_</code> with <code>-</code> when
+            it encodes a project path. So <code>~/.claude/projects/</code> fills up with
+            unreadable folders, and <code>du -sh *</code> won't tell you which session
+            ate the disk.
+          </p>
+        </div>
+        <div class="problem-grid">
+          <div class="terminal terminal-bad reveal" data-reveal-delay="80">
+            <div class="terminal-head">
+              <span class="terminal-tag">BEFORE</span>
+              <span class="terminal-title">$ ls ~/.claude/projects/</span>
+            </div>
+            <pre class="terminal-body"><span class="t-dim">drwxr-xr-x  -home-q-my-projects-ccm/</span>
+<span class="t-dim">drwxr-xr-x  -home-q-my-projects-agent-eval/</span>
+<span class="t-dim">drwxr-xr-x  -home-q-work-anthropic-sdk/</span>
+<span class="t-dim">drwxr-xr-x  -home-q-work-claude-rag/</span>
+<span class="t-dim">drwxr-xr-x  -home-q-notes-research-2026/</span>
+<span class="t-dim">drwxr-xr-x  -home-q-scratch-quick-tests/</span>
+<span class="t-warn"># …which one was my_projects vs my-projects?</span>
+<span class="t-warn"># which session was 200 MB?</span>
+<span class="t-warn"># what's in their memory/ folders?</span></pre>
+          </div>
+          <div class="terminal terminal-good reveal" data-reveal-delay="160">
+            <div class="terminal-head">
+              <span class="terminal-tag tag-coral">AFTER</span>
+              <span class="terminal-title">$ ccm ls --sort size</span>
+            </div>
+            <pre class="terminal-body"><span class="t-h">PROJECT                          SESSIONS   SIZE   LAST ACTIVE</span>
+<span class="t-row">my_projects/agent-eval                <span class="t-coral">31</span>  12.0M   2 hours ago</span>
+<span class="t-row">work/anthropic-sdk                    <span class="t-coral">22</span>   6.1M   3 hours ago</span>
+<span class="t-row">work/claude-rag                       <span class="t-coral">17</span>   4.8M   yesterday</span>
+<span class="t-row">my_projects/ccm                       <span class="t-coral">14</span>   3.2M   2 min ago</span>
+<span class="t-row">notes/research-2026                    <span class="t-coral">8</span>   1.4M   3 days ago</span>
+<span class="t-row">scratch/quick-tests                    <span class="t-coral">3</span>   0.4M   1 week ago</span>
+<span class="t-ok">✓ decoded from real cwd inside each JSONL</span></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── FEATURES ────────────────────────────────────────── -->
+    <section class="features" id="features">
+      <div class="container">
+        <div class="band-head reveal">
+          <span class="eyebrow">What it does</span>
+          <h2 class="display-lg">Six things you'd otherwise<br/>script by hand.</h2>
+        </div>
+
+        <div class="features-grid">
+          <article class="feature-card reveal" data-reveal-delay="0">
+            <div class="feature-glyph">✶</div>
+            <h3 class="title-md">Decodes the path encoding correctly</h3>
+            <p>
+              Reads the real <code>cwd</code> from inside each session's JSONL.
+              No naive <code>-</code>&nbsp;→&nbsp;<code>/</code> guessing that confuses
+              <code>my_projects</code> with <code>my-projects</code>.
+            </p>
+            <code class="chip">paths.real_cwd_from_sessions()</code>
+          </article>
+
+          <article class="feature-card reveal" data-reveal-delay="60">
+            <div class="feature-glyph">✷</div>
+            <h3 class="title-md">A TUI you'll actually want to open</h3>
+            <p>
+              Textual app with two panes, vim keys, a Claude-style asterisk
+              spinner up top, and a delete-confirm modal that won't bite you.
+            </p>
+            <code class="chip">↑↓ · h/l · Enter · m · d · r · q</code>
+          </article>
+
+          <article class="feature-card reveal" data-reveal-delay="120">
+            <div class="feature-glyph">✸</div>
+            <h3 class="title-md">Export to Markdown, JSON, or raw</h3>
+            <p>
+              Pull any session out into a portable document. Pipe it into a PR
+              description, an issue comment, or a Notion page.
+            </p>
+            <code class="chip">ccm export &lt;p&gt; &lt;s&gt; -f md</code>
+          </article>
+
+          <article class="feature-card reveal" data-reveal-delay="180">
+            <div class="feature-glyph">✹</div>
+            <h3 class="title-md">Memory file inspector</h3>
+            <p>
+              Surfaces <code>memory/*.md</code> per project — read, dump, or
+              delete individual entries without rummaging through folders.
+            </p>
+            <code class="chip">ccm memory &lt;p&gt; --show NAME</code>
+          </article>
+
+          <article class="feature-card reveal" data-reveal-delay="240">
+            <div class="feature-glyph">✺</div>
+            <h3 class="title-md">Disk-usage dashboard</h3>
+            <p>
+              Top projects by size, by session count, by recency. Find the
+              50-MB session you forgot about in three keystrokes.
+            </p>
+            <code class="chip">ccm stats</code>
+          </article>
+
+          <article class="feature-card reveal" data-reveal-delay="300">
+            <div class="feature-glyph">✻</div>
+            <h3 class="title-md">Scripting-friendly subcommands</h3>
+            <p>
+              Every TUI action has a CLI mirror. Pipe, sort, filter, automate
+              from shell scripts — no headless mode required.
+            </p>
+            <code class="chip">ccm ls -s size -n 10 | head</code>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── TUI SHOWCASE ────────────────────────────────────── -->
+    <section class="tui-showcase" id="tui">
+      <div class="container">
+        <div class="band-head reveal">
+          <span class="eyebrow">The TUI</span>
+          <h2 class="display-lg on-dark">Read it like a newspaper.<br/>Drive it like vim.</h2>
+          <p class="lede on-dark">
+            Three panes, one cursor, zero modal popups you didn't ask for.
+            Press <span class="kbd-inline">m</span> for memory,
+            <span class="kbd-inline">d</span> to delete,
+            <span class="kbd-inline">Enter</span> to drill in.
+          </p>
+        </div>
+
+        <div class="tui-big reveal" data-reveal-delay="120">
+          <div class="window window-lg">
+            <div class="window-chrome">
+              <span class="dot-mac r"></span>
+              <span class="dot-mac y"></span>
+              <span class="dot-mac g"></span>
+              <span class="window-title">ccm</span>
+              <span class="window-spinner" id="bigSpinner">✶</span>
+            </div>
+            <div class="window-body tui tui-lg">
+              <div class="tui-header">
+                <span class="tui-brand">
+                  <span class="tui-mark" id="bigTuiSpinner">✶</span>
+                  <span class="tui-word">ccm</span>
+                </span>
+                <span class="tui-sep">·</span>
+                <span class="tui-project" id="bigProject">my_projects/ccm</span>
+                <span class="tui-flex"></span>
+                <span class="tui-status" id="bigStatus">9 projects · 108 sessions · 32.1 MB</span>
+              </div>
+              <div class="tui-panes tui-panes-big">
+                <div class="tui-pane">
+                  <div class="tui-pane-title">Projects</div>
+                  <ul class="tui-list" id="bigProjects">
+                    <li class="active"><span class="t-name">my_projects/ccm</span><span class="t-meta">14 sess</span></li>
+                    <li><span class="t-name">work/anthropic-sdk</span><span class="t-meta">22 sess</span></li>
+                    <li><span class="t-name">notes/research-2026</span><span class="t-meta">8 sess</span></li>
+                    <li><span class="t-name">my_projects/agent-eval</span><span class="t-meta">31 sess</span></li>
+                    <li><span class="t-name">work/claude-rag</span><span class="t-meta">17 sess</span></li>
+                    <li><span class="t-name">scratch/quick-tests</span><span class="t-meta">3 sess</span></li>
+                  </ul>
+                </div>
+                <div class="tui-pane tui-pane-wide">
+                  <div class="tui-pane-title" id="bigPaneTitle">Sessions of my_projects/ccm</div>
+                  <ul class="tui-list" id="bigSessions">
+                    <li class="active"><span class="t-name">build landing page</span><span class="t-meta">2m · 218 msgs · 142 KB</span></li>
+                    <li><span class="t-name">fix textual _size shadow</span><span class="t-meta">3h · 64 msgs · 38 KB</span></li>
+                    <li><span class="t-name">ci: actions for tests + pypi</span><span class="t-meta">1d · 110 msgs · 71 KB</span></li>
+                    <li><span class="t-name">memory inspector v2</span><span class="t-meta">2d · 42 msgs · 24 KB</span></li>
+                    <li><span class="t-name">stats: disk usage graph</span><span class="t-meta">3d · 88 msgs · 51 KB</span></li>
+                    <li><span class="t-name">export to markdown</span><span class="t-meta">5d · 31 msgs · 18 KB</span></li>
+                  </ul>
+                </div>
+              </div>
+              <div class="tui-footer">
+                <span><span class="tui-kbd">↑↓</span> move</span>
+                <span><span class="tui-kbd">h/l</span> pane</span>
+                <span><span class="tui-kbd">Enter</span> open</span>
+                <span><span class="tui-kbd">m</span> memory</span>
+                <span><span class="tui-kbd">d</span> delete</span>
+                <span><span class="tui-kbd">r</span> refresh</span>
+                <span><span class="tui-kbd">q</span> quit</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── ARCHITECTURE ────────────────────────────────────── -->
+    <section class="architecture">
+      <div class="container">
+        <div class="band-head reveal">
+          <span class="eyebrow">Architecture</span>
+          <h2 class="display-lg">Three layers. Nothing&nbsp;extra.</h2>
+          <p class="lede">
+            Domain logic stays UI-agnostic. The CLI and TUI are two faces
+            of the same <code>core/</code> — so a subcommand and a key-press
+            do exactly the same thing.
+          </p>
+        </div>
+
+        <div class="arch-diagram reveal" data-reveal-delay="120">
+          <svg viewBox="0 0 760 360" class="arch-svg" aria-label="Architecture diagram">
+            <defs>
+              <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M 0 0 L 10 5 L 0 10 Z" fill="currentColor"/>
+              </marker>
+            </defs>
+            <!-- User -->
+            <g class="arch-node">
+              <ellipse cx="60" cy="180" rx="50" ry="32" />
+              <text x="60" y="178" class="arch-label">Terminal</text>
+              <text x="60" y="195" class="arch-label">user</text>
+            </g>
+            <!-- CLI -->
+            <g class="arch-node arch-node-card">
+              <rect x="220" y="60" width="180" height="92" rx="12" />
+              <text x="310" y="92" class="arch-title">cli/</text>
+              <text x="310" y="116" class="arch-sub">typer subcommands</text>
+              <text x="310" y="134" class="arch-mono">ccm ls · stats · export</text>
+            </g>
+            <!-- TUI -->
+            <g class="arch-node arch-node-card">
+              <rect x="220" y="208" width="180" height="92" rx="12" />
+              <text x="310" y="240" class="arch-title">tui/</text>
+              <text x="310" y="264" class="arch-sub">textual app</text>
+              <text x="310" y="282" class="arch-mono">screens · widgets</text>
+            </g>
+            <!-- CORE -->
+            <g class="arch-node arch-node-card arch-node-coral">
+              <rect x="470" y="134" width="200" height="92" rx="12" />
+              <text x="570" y="166" class="arch-title">core/</text>
+              <text x="570" y="190" class="arch-sub">projects · sessions · memory</text>
+              <text x="570" y="208" class="arch-sub">stats · export</text>
+            </g>
+            <!-- Disk -->
+            <g class="arch-node">
+              <path d="M 700 280 q 0 -20 30 -20 q 30 0 30 20 v 40 q 0 20 -30 20 q -30 0 -30 -20 z M 700 280 q 0 20 30 20 q 30 0 30 -20" fill="none"/>
+              <text x="730" y="304" class="arch-label">~/.claude/</text>
+              <text x="730" y="320" class="arch-label">projects/</text>
+            </g>
+            <!-- Arrows -->
+            <path class="arch-arrow" d="M 110 168 C 160 130, 180 110, 220 106" marker-end="url(#arrow)" />
+            <path class="arch-arrow" d="M 110 192 C 160 230, 180 250, 220 254" marker-end="url(#arrow)" />
+            <path class="arch-arrow" d="M 400 106 C 440 110, 460 140, 470 160" marker-end="url(#arrow)" />
+            <path class="arch-arrow" d="M 400 254 C 440 250, 460 220, 470 200" marker-end="url(#arrow)" />
+            <path class="arch-arrow arch-arrow-coral" d="M 670 200 C 690 220, 700 250, 712 268" marker-end="url(#arrow)" />
+          </svg>
+        </div>
+
+        <p class="arch-note reveal" data-reveal-delay="240">
+          <strong>The lossy folder-name encoding is the one bit that requires care.</strong>
+          Claude Code replaces both <code>/</code> and <code>_</code> with <code>-</code>,
+          so <code>real_cwd_from_sessions()</code> reads the actual
+          <code>cwd</code> field from the first session JSONL inside each directory.
+        </p>
+      </div>
+    </section>
+
+    <!-- ─── COMMANDS ────────────────────────────────────────── -->
+    <section class="commands" id="commands">
+      <div class="container">
+        <div class="band-head reveal">
+          <span class="eyebrow">CLI reference</span>
+          <h2 class="display-lg on-dark">Eleven commands.<br/>Sane defaults.</h2>
+        </div>
+
+        <div class="cmd-tabs reveal" data-reveal-delay="80" role="tablist">
+          <button class="cmd-tab active" data-tab="ls" role="tab" aria-selected="true">ccm ls</button>
+          <button class="cmd-tab" data-tab="show" role="tab" aria-selected="false">ccm show</button>
+          <button class="cmd-tab" data-tab="sessions" role="tab" aria-selected="false">ccm sessions</button>
+          <button class="cmd-tab" data-tab="export" role="tab" aria-selected="false">ccm export</button>
+          <button class="cmd-tab" data-tab="memory" role="tab" aria-selected="false">ccm memory</button>
+          <button class="cmd-tab" data-tab="stats" role="tab" aria-selected="false">ccm stats</button>
+        </div>
+
+        <div class="cmd-window reveal" data-reveal-delay="160">
+          <div class="window window-dark">
+            <div class="window-chrome">
+              <span class="dot-mac r"></span>
+              <span class="dot-mac y"></span>
+              <span class="dot-mac g"></span>
+              <span class="window-title" id="cmdTitle">ccm ls --sort size -n 10</span>
+            </div>
+            <pre class="window-body code" id="cmdBody"><span class="prompt">$</span> <span class="cmd">ccm ls --sort size -n 10</span>
+
+<span class="c-h">PROJECT                          SESSIONS   SIZE   LAST ACTIVE</span>
+<span class="c-r">my_projects/agent-eval                <span class="c-acc">31</span>  12.0M   2 hours ago</span>
+<span class="c-r">work/anthropic-sdk                    <span class="c-acc">22</span>   6.1M   3 hours ago</span>
+<span class="c-r">work/claude-rag                       <span class="c-acc">17</span>   4.8M   yesterday</span>
+<span class="c-r">my_projects/ccm                       <span class="c-acc">14</span>   3.2M   2 min ago</span>
+<span class="c-r">notes/research-2026                    <span class="c-acc">8</span>   1.4M   3 days ago</span>
+<span class="c-r">scratch/quick-tests                    <span class="c-acc">3</span>   0.4M   1 week ago</span>
+
+<span class="c-ok">✓ 6 projects · 95 sessions · 28.0 MB total</span></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── CORAL CTA ───────────────────────────────────────── -->
+    <section class="cta-band" id="install">
+      <div class="container">
+        <div class="cta-card reveal">
+          <div class="cta-copy">
+            <span class="eyebrow eyebrow-light">Install</span>
+            <h2 class="display-md">One line. No config.<br/>The console command stays <code>ccm</code>.</h2>
+            <p>Python 3.10+ and <a href="https://docs.astral.sh/uv/" target="_blank" rel="noopener">uv</a> required. Or use <code>pipx</code> / <code>pip&nbsp;--user</code> if you prefer.</p>
+          </div>
+          <div class="cta-codes">
+            <button class="copy-block magnetic" data-copy="uv tool install claudecm" aria-label="Copy install command">
+              <span class="copy-prompt">$</span>
+              <span class="copy-cmd">uv tool install claudecm</span>
+              <span class="copy-icon">
+                <svg viewBox="0 0 16 16" width="16" height="16"><path d="M5 1.5h6a1 1 0 0 1 1 1V4h1.5a1 1 0 0 1 1 1v9.5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V13H2.5a1 1 0 0 1-1-1V2.5a1 1 0 0 1 1-1H5Zm0 1H2.5v9.5H4V5a1 1 0 0 1 1-1h6V2.5H5Zm0 2.5v9.5h8.5V5H5Z" fill="currentColor"/></svg>
+              </span>
+            </button>
+            <button class="copy-block copy-block-ghost" data-copy="pipx install claudecm">
+              <span class="copy-prompt">$</span>
+              <span class="copy-cmd">pipx install claudecm</span>
+              <span class="copy-icon">
+                <svg viewBox="0 0 16 16" width="14" height="14"><path d="M5 1.5h6a1 1 0 0 1 1 1V4h1.5a1 1 0 0 1 1 1v9.5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V13H2.5a1 1 0 0 1-1-1V2.5a1 1 0 0 1 1-1H5Zm0 1H2.5v9.5H4V5a1 1 0 0 1 1-1h6V2.5H5Zm0 2.5v9.5h8.5V5H5Z" fill="currentColor"/></svg>
+              </span>
+            </button>
+            <button class="copy-block copy-block-ghost" data-copy="uvx --from claudecm ccm ls">
+              <span class="copy-prompt">$</span>
+              <span class="copy-cmd">uvx --from claudecm ccm ls</span>
+              <span class="copy-icon">
+                <svg viewBox="0 0 16 16" width="14" height="14"><path d="M5 1.5h6a1 1 0 0 1 1 1V4h1.5a1 1 0 0 1 1 1v9.5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V13H2.5a1 1 0 0 1-1-1V2.5a1 1 0 0 1 1-1H5Zm0 1H2.5v9.5H4V5a1 1 0 0 1 1-1h6V2.5H5Zm0 2.5v9.5h8.5V5H5Z" fill="currentColor"/></svg>
+              </span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ─── FOOTER ────────────────────────────────────────────── -->
+  <footer class="footer">
+    <div class="container footer-grid">
+      <div class="footer-brand">
+        <span class="brand brand-on-dark">
+          <svg class="brand-mark" viewBox="0 0 24 24"><path d="M12 0 L13 9 L24 12 L13 15 L12 24 L11 15 L0 12 L11 9 Z"/></svg>
+          <span class="brand-word">ccm</span>
+        </span>
+        <p>A quiet manager for everything Claude Code remembers.</p>
+        <p class="footer-tiny">Inspired by Claude Code's own palette. Not affiliated with Anthropic.</p>
+      </div>
+      <div class="footer-col">
+        <div class="footer-head">Project</div>
+        <a href="https://github.com/QuocTang/ccm/blob/main/README.md" target="_blank" rel="noopener">README</a>
+        <a href="https://github.com/QuocTang/ccm/blob/main/LICENSE" target="_blank" rel="noopener">License (MIT)</a>
+        <a href="https://github.com/QuocTang/ccm/releases" target="_blank" rel="noopener">Releases</a>
+      </div>
+      <div class="footer-col">
+        <div class="footer-head">Code</div>
+        <a href="https://github.com/QuocTang/ccm" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://pypi.org/project/claudecm/" target="_blank" rel="noopener">PyPI</a>
+        <a href="https://github.com/QuocTang/ccm/issues" target="_blank" rel="noopener">Issues</a>
+      </div>
+      <div class="footer-col">
+        <div class="footer-head">Author</div>
+        <a href="https://github.com/QuocTang" target="_blank" rel="noopener">@QuocTang</a>
+        <a href="https://github.com/QuocTang/ccm/graphs/contributors" target="_blank" rel="noopener">Contributors</a>
+      </div>
+    </div>
+    <div class="container footer-bottom">
+      <span>© <span id="year">2026</span> QuocTang · MIT</span>
+      <span class="footer-tiny">Built with <code>typer</code> · <code>rich</code> · <code>textual</code>.</span>
+    </div>
+  </footer>
+
+  <!-- Copy-toast -->
+  <div class="toast" id="toast" aria-live="polite">Copied to clipboard</div>
+
+  <script src="main.js" defer></script>
+</body>
+</html>
