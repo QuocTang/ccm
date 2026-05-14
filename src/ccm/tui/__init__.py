@@ -25,6 +25,8 @@ class CCMApp(App):
         self.push_screen(MainScreen())
 
     def get_system_commands(self, screen: Screen) -> Iterable[SystemCommand]:
+        # textual.app.App.get_system_commands yields a SystemCommand with
+        # an anonymous-lambda callback, so the title is the only stable handle.
         for cmd in super().get_system_commands(screen):
             if cmd.title == "Screenshot":
                 continue

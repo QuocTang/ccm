@@ -1,18 +1,76 @@
-# ccm — Claude Code Manager
+<div align="center">
 
-A CLI + TUI to manage what Claude Code stores under `~/.claude/projects/`:
-list projects, browse sessions, view/delete/export them, inspect memory files,
-and see disk-usage stats.
+<img src="assets/logo-full.png" alt="ccm" height="160" />
 
-## Install
+**Claude Code Manager** — a CLI + TUI for everything Claude Code stores under `~/.claude/projects/`.
 
-Requires Python 3.10+ and [uv](https://docs.astral.sh/uv/).
+[![License: MIT](https://img.shields.io/github/license/QuocTang/ccm.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![uv](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fastral-sh%2Fuv%2Fmain%2Fassets%2Fbadge%2Fv0.json)](https://docs.astral.sh/uv/)
+[![Stars](https://img.shields.io/github/stars/QuocTang/ccm.svg?style=social)](https://github.com/QuocTang/ccm/stargazers)
+
+List projects, browse sessions, view / delete / export them, inspect memory
+files, see disk-usage stats — without `cd`-ing into a directory full of
+URL-encoded path names.
+
+</div>
+
+---
+
+## Quick start
 
 ```bash
-uv tool install .          # from a clone of this repo
-# or, after publishing:
-# uv tool install ccm
+uv tool install git+https://github.com/QuocTang/ccm
+ccm                  # launches the TUI
+ccm ls               # subcommand mode
+ccm stats            # disk-usage dashboard
 ```
+
+> Requires Python 3.10+ and [uv](https://docs.astral.sh/uv/).
+
+## Why ccm
+
+`~/.claude/projects/` accumulates fast: every Claude Code session writes a
+JSONL file, every project keeps its own memory directory, and the folder names
+are a one-way path encoding (`/home/q/my_projects/foo` →
+`-home-q-my-projects-foo`). Going in with `ls` and `rm` is painful.
+
+- **One pane to navigate them all** — projects on the left, sessions on the right, Claude-style spinner up top.
+- **Subcommands for scripting** — `ccm ls --sort size -n 10`, `ccm export <project> -f md`, `ccm stats`.
+- **Decodes folder names correctly** — by reading the real `cwd` from inside each session's JSONL, not by replacing `-` with `/` and hoping.
+- **Knows about memory and PRs** — surfaces `memory/*.md`, counts messages by type, picks up custom session titles.
+- **No daemon, no config** — operates directly on the on-disk layout Claude Code already uses.
+
+## Installation
+
+<details>
+<summary><b>From source (latest)</b></summary>
+
+```bash
+git clone https://github.com/QuocTang/ccm
+cd ccm
+uv tool install .            # global, available as `ccm`
+# or for dev work:
+uv sync --extra dev
+uv run ccm --help
+```
+</details>
+
+<details>
+<summary><b>Without cloning</b></summary>
+
+```bash
+uv tool install git+https://github.com/QuocTang/ccm
+```
+</details>
+
+<details>
+<summary><b>Run without installing (one-off)</b></summary>
+
+```bash
+uvx --from git+https://github.com/QuocTang/ccm ccm ls
+```
+</details>
 
 ## Usage
 
@@ -39,7 +97,7 @@ ccm tui                     # launch TUI explicitly
 `<session>` accepts the full UUID or a unique prefix (the 8-char head shown
 by `ccm sessions` is usually enough).
 
-## TUI keys
+### TUI keys
 
 | Key             | Action                                  |
 | --------------- | --------------------------------------- |
@@ -52,9 +110,74 @@ by `ccm sessions` is usually enough).
 | `r`             | Refresh                                 |
 | `q` `Ctrl+C`    | Quit (or back inside a sub-screen)      |
 
-## How decoding works
+Inside a delete-confirm modal: `y` / `Enter` to confirm, `n` / `Esc` to cancel.
 
-Claude Code names project dirs by replacing both `/` and `_` with `-` —
-encoding is lossy, so `ccm` reads the real `cwd` from the first session JSONL
-inside each directory. If a project has no sessions, it falls back to a naive
-`-` → `/` replacement.
+## Architecture
+
+Three layers, deliberately separated so domain code stays UI-agnostic.
+
+```mermaid
+flowchart LR
+    User([Terminal user])
+    subgraph ccm
+        direction TB
+        CLI["cli/<br/><sub>typer subcommands</sub>"]
+        TUI["tui/<br/><sub>textual app</sub>"]
+        CORE["core/<br/><sub>projects · sessions · memory · stats · export</sub>"]
+        SHARED["palette.py · paths.py<br/><sub>shared theme & path helpers</sub>"]
+    end
+    Disk[("~/.claude/projects/<br/>JSONL sessions + memory/")]
+
+    User -- "ccm <subcommand>" --> CLI
+    User -- "ccm (no args)" --> TUI
+    CLI --> CORE
+    TUI --> CORE
+    CLI -.-> SHARED
+    TUI -.-> SHARED
+    CORE --> Disk
+```
+
+The lossy folder-name encoding is the one bit that requires care: Claude Code
+replaces both `/` and `_` with `-`, so `paths.real_cwd_from_sessions()` reads
+the actual `cwd` field from the first session JSONL inside each directory.
+The naive `-` → `/` replacement is only a fallback for empty projects.
+
+## Development
+
+```bash
+uv sync --extra dev                                           # install + pytest
+uv run pytest -q                                              # run all tests
+uv run pytest tests/core/test_paths.py -k naive_decode        # one test
+uv tool install . --force --reinstall                         # rebuild global `ccm`
+```
+
+See [`CLAUDE.md`](CLAUDE.md) for architecture notes and the textual / typer
+gotchas we hit (lossy path encoding, `Widget._size` shadowing, markup escaping,
+etc).
+
+## Design exploration
+
+Four visual directions were prototyped before settling on the Claude Code-style
+coral theme — open [`mockups/index.html`](mockups/index.html) in a browser to
+flip through V1 (Minimal Mono), V2 (Classic Dark), V3 (Vibrant Neon), V4
+(Catppuccin Pastel), and V5 (Claude Code).
+
+## Contributing
+
+PRs welcome. Keep the three-layer split (`core` stays UI-agnostic), run
+`uv run pytest -q` before pushing, and follow the gotchas in `CLAUDE.md` if you
+touch `tui/`.
+
+## Contributors
+
+<a href="https://github.com/QuocTang/ccm/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=QuocTang/ccm" alt="Contributors" />
+</a>
+
+## License
+
+[MIT](LICENSE) © QuocTang
+
+## Star history
+
+[![Star History Chart](https://api.star-history.com/svg?repos=QuocTang/ccm&type=Date)](https://star-history.com/#QuocTang/ccm&Date)
