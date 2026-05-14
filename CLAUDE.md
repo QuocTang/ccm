@@ -8,6 +8,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 `~/.claude/projects/` (projects, session JSONL files, memory). End-user docs
 live in `README.md`.
 
+The PyPI distribution is named **`claudecm`** (the unqualified `ccm` was
+taken). The console command stays `ccm` via the
+`ccm = "ccm.cli:app"` entry point.
+
 ## Common commands
 
 This repo uses **uv** for everything. Python 3.10+.
@@ -18,6 +22,8 @@ uv run ccm <subcommand>                      # run inside project venv
 uv run pytest -q                             # run the test suite
 uv run pytest tests/core/test_paths.py::test_naive_decode_strips_leading_dash  # single test
 uv tool install . --force --reinstall        # (re)install the `ccm` global tool
+uv lock                                      # re-resolve after editing pyproject version
+git tag vX.Y.Z && git push origin vX.Y.Z     # ships to PyPI via release.yml
 ```
 
 When testing TUI behavior, prefer the headless `App.run_test()` pattern:
@@ -47,7 +53,28 @@ Three layers, deliberately separated so the domain code stays UI-agnostic:
   `_markup.py` (`safe()`/`styled()` helpers), `__init__.py` (`CCMApp`).
 
 `palette.py` and `paths.py` sit at the top of `src/ccm/` because both `cli/`
-and `tui/` depend on them.
+and `tui/` depend on them. `palette.SPINNER_FRAMES` (`✶✷✸✹✺✻✼✽`) is the
+canonical 8-frame asterisk spinner — also embedded in `docs/main.js`,
+so change it in both places.
+
+## Release
+
+Two GitHub Actions workflows:
+
+- `ci.yml` — runs on every push to `main` and on PRs. Tests Python 3.10
+  through 3.13 and verifies the wheel builds cleanly.
+- `release.yml` — triggered **only by pushing a `v*` tag**. A bump commit
+  in `pyproject.toml` alone does **not** publish; it must be followed by
+  `git tag vX.Y.Z && git push origin vX.Y.Z`. Publishes to PyPI via
+  trusted publishing (no token) and creates a GitHub Release with the
+  built artifacts attached.
+
+When you edit `pyproject.toml`'s `version`, also run `uv lock`. The
+lockfile and pyproject have drifted by a patch before (uv.lock at 0.1.1
+while pyproject was 0.1.2) because earlier bumps skipped the relock.
+The wheel only ships `src/ccm/` (see `[tool.hatch.build.targets.wheel]`)
+— `docs/`, `assets/`, `tests/`, and `dist/` are repo-only and not
+worth a release bump on their own.
 
 ## Non-obvious gotchas
 
@@ -95,4 +122,16 @@ These bit us during development — don't relearn them:
   touch project enumeration.
 - `pyproject.toml` sets `pythonpath = ["src"]` so test files can `from ccm...`
   directly without installing.
+
+## Landing page
+
+`docs/` is a static, no-build HTML/CSS/JS marketing site. It lives at
+`docs/` precisely so GitHub Pages can serve it directly (Settings →
+Pages → Source: deploy from a branch → `main` → folder `/docs`) without
+a separate deploy workflow.
+
+The animated TUI mockup mirrors the real `tui/` layout and reuses
+`palette.SPINNER_FRAMES` — touch it whenever the live TUI's visual
+language changes. Don't add `docs/` to the wheel; it has no runtime
+purpose.
 
