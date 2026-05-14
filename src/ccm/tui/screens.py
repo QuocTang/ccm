@@ -1,27 +1,26 @@
-from __future__ import annotations
+"""Textual screens: Main, SessionView, MemoryView, ConfirmScreen."""
 
-from datetime import datetime, timezone
+from __future__ import annotations
 
 from rich.markup import escape
 from rich.style import Style
 from rich.text import Text
-from textual.app import App, ComposeResult
+from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen, Screen
 from textual.widgets import Footer, OptionList, Static
-from textual.widgets.option_list import Option
 
-from .core import memory as memory_mod
-from .core.projects import Project, delete_project, list_projects
-from .core.sessions import (
+from ..core import memory as memory_mod
+from ..core.projects import Project, delete_project, list_projects
+from ..core.sessions import (
     SessionSummary,
     delete_session,
     iter_messages,
     list_sessions,
 )
-from .core.stats import compute_stats
-from .palette import (
+from ..core.stats import compute_stats
+from ..palette import (
     BG,
     BG_ALT,
     BG_SEL,
@@ -33,109 +32,9 @@ from .palette import (
     DIM,
     FAINT,
     RULE,
-    SPINNER_FRAMES,
-    SPINNER_INTERVAL,
 )
-from .paths import fmt_size
-
-
-def _fmt_time(dt: datetime | None) -> str:
-    if dt is None:
-        return "-"
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    secs = int((datetime.now(timezone.utc) - dt).total_seconds())
-    if secs < 60:
-        return f"{secs}s"
-    if secs < 3600:
-        return f"{secs // 60}m"
-    if secs < 86400:
-        return f"{secs // 3600}h"
-    return f"{secs // 86400}d"
-
-
-class HeaderBar(Static):
-    """Two-row header: morphing ✻ spinner + stats."""
-
-    DEFAULT_CSS = f"""
-    HeaderBar {{
-        height: 3;
-        padding: 1 2 0 2;
-        background: {BG_ALT};
-        color: {CREAM_DIM};
-    }}
-    """
-
-    def __init__(self) -> None:
-        # NB: avoid attribute names like `_size`, `_idx`, `_projects` —
-        # textual.Widget reserves several private attrs (_size in particular
-        # backs widget.outer_size). Prefix everything with `_hb_` to stay clear.
-        self._hb_idx = 0
-        self._hb_projects = 0
-        self._hb_sessions = 0
-        self._hb_size = "0B"
-        # Seed initial content via super().__init__(); calling self.update()
-        # inside on_mount races with Static's visual init and leaves
-        # _visual=None, which crashes the first render frame.
-        super().__init__(self._build())
-
-    def on_mount(self) -> None:
-        self.set_interval(SPINNER_INTERVAL, self._tick)
-
-    def set_stats(self, projects: int, sessions: int, size: str) -> None:
-        self._hb_projects = projects
-        self._hb_sessions = sessions
-        self._hb_size = size
-        self.update(self._build())
-
-    def _tick(self) -> None:
-        self._hb_idx = (self._hb_idx + 1) % len(SPINNER_FRAMES)
-        self.update(self._build())
-
-    def _build(self) -> Text:
-        t = Text()
-        t.append(SPINNER_FRAMES[self._hb_idx] + "  ", style=Style(color=CORAL, bold=True))
-        t.append("ccm  ", style=Style(color=CREAM, bold=True))
-        t.append("claude code manager", style=Style(color=DIM))
-        t.append("\n   cwd: ", style=Style(color=DIM))
-        t.append("~/.claude/projects", style=Style(color=CREAM_DIM))
-        t.append("   ·   ", style=Style(color=FAINT))
-        t.append(f"{self._hb_projects} projects", style=Style(color=CREAM_DIM))
-        t.append("   ·   ", style=Style(color=FAINT))
-        t.append(f"{self._hb_sessions} sessions", style=Style(color=CREAM_DIM))
-        t.append("   ·   ", style=Style(color=FAINT))
-        t.append(self._hb_size, style=Style(color=CREAM_DIM))
-        return t
-
-
-def make_project_option(p: Project) -> Option:
-    t = Text()
-    t.append("●  ", style=Style(color=CORAL))
-    t.append(p.real_cwd, style=Style(color=CREAM))
-    t.append("\n   ", style=Style(color=DIM))
-    parts = [
-        f"{p.session_count} session{'s' if p.session_count != 1 else ''}",
-        fmt_size(p.size_bytes),
-    ]
-    if p.has_memory:
-        parts.append("memory")
-    parts.append(_fmt_time(p.last_activity) + " ago")
-    t.append(" · ".join(parts), style=Style(color=DIM))
-    return Option(t, id=p.dir_name)
-
-
-def make_session_option(s: SessionSummary) -> Option:
-    t = Text()
-    t.append("⎿  ", style=Style(color=CORAL))
-    t.append(s.session_id[:8] + "  ", style=Style(color=CORAL_SOFT))
-    title = s.custom_title or (s.first_user_prompt or "")[:70] or s.session_id
-    t.append(title, style=Style(color=CREAM))
-    t.append("\n   ", style=Style(color=DIM))
-    meta = f"{s.message_count} msgs · {fmt_size(s.size_bytes)} · {_fmt_time(s.last_time)} ago"
-    if s.git_branch:
-        meta += f" · {s.git_branch}"
-    t.append(meta, style=Style(color=DIM))
-    return Option(t, id=s.session_id)
+from ..paths import fmt_size
+from .widgets import HeaderBar, make_project_option, make_session_option
 
 
 class ConfirmScreen(ModalScreen[bool]):
@@ -203,7 +102,8 @@ class SessionView(Screen):
         s = self.session
         lines: list[str] = []
         lines.append(
-            f"[bold {CORAL}]✻[/]  [bold {CREAM}]Session[/]  [{CORAL_SOFT}]{escape(s.session_id)}[/]"
+            f"[bold {CORAL}]✻[/]  [bold {CREAM}]Session[/]  "
+            f"[{CORAL_SOFT}]{escape(s.session_id)}[/]"
         )
         if s.custom_title:
             lines.append(f"   [{DIM}]title:[/]  [{CREAM_DIM}]{escape(s.custom_title)}[/]")
@@ -217,7 +117,8 @@ class SessionView(Screen):
         for ts, role, text in iter_messages(s.path):
             color = CORAL if role == "user" else CORAL_SOFT
             lines.append(
-                f"[{RULE}]─[/] [bold {color}]{escape(role)}[/] [{FAINT}]{escape(ts or '')}[/]"
+                f"[{RULE}]─[/] [bold {color}]{escape(role)}[/] "
+                f"[{FAINT}]{escape(ts or '')}[/]"
             )
             lines.append(f"[{CREAM_DIM}]{escape(text)}[/]")
             lines.append("")
@@ -365,7 +266,6 @@ class MainScreen(Screen):
         if self.projects:
             pl.highlighted = 0
 
-    # ------------------------------------------------------------- data
     def _set_status(self, text: str | Text) -> None:
         self.query_one("#status", Static).update(text)
 
@@ -383,7 +283,6 @@ class MainScreen(Screen):
             pl.add_option(make_project_option(p))
         self._refresh_header()
 
-        # Re-sync sessions for currently-tracked project (if it still exists).
         if self.current_project:
             match = next(
                 (p for p in self.projects if p.dir_name == self.current_project.dir_name),
@@ -410,7 +309,6 @@ class MainScreen(Screen):
         )
         self.query_one("#sessions-title", Static).update(title)
 
-    # ------------------------------------------------------------- events
     def on_option_list_option_highlighted(self, event: OptionList.OptionHighlighted) -> None:
         if event.option_list.id == "projects-list":
             idx = event.option_index
@@ -425,7 +323,6 @@ class MainScreen(Screen):
             if 0 <= idx < len(self.sessions):
                 self.app.push_screen(SessionView(self.sessions[idx]))
 
-    # ------------------------------------------------------------- actions
     def action_focus_projects(self) -> None:
         self.query_one("#projects-list", OptionList).focus()
 
@@ -482,7 +379,8 @@ class MainScreen(Screen):
 
             self.app.push_screen(
                 ConfirmScreen(
-                    f"Delete project\n{project.real_cwd}\n({project.session_count} sessions · {fmt_size(project.size_bytes)})"
+                    f"Delete project\n{project.real_cwd}\n"
+                    f"({project.session_count} sessions · {fmt_size(project.size_bytes)})"
                 ),
                 after,
             )
@@ -503,23 +401,8 @@ class MainScreen(Screen):
 
             self.app.push_screen(
                 ConfirmScreen(
-                    f"Delete session {session.session_id[:8]}\n({session.message_count} msgs · {fmt_size(session.size_bytes)})"
+                    f"Delete session {session.session_id[:8]}\n"
+                    f"({session.message_count} msgs · {fmt_size(session.size_bytes)})"
                 ),
                 after,
             )
-
-
-class CCMApp(App):
-    TITLE = "ccm"
-    SUB_TITLE = "claude code manager"
-
-    CSS = f"""
-    Screen {{ background: {BG}; }}
-    """
-
-    def on_mount(self) -> None:
-        self.push_screen(MainScreen())
-
-
-def run_tui() -> None:
-    CCMApp().run()
