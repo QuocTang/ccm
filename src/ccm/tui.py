@@ -2,13 +2,15 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from rich.markdown import Markdown
+from rich.markup import escape
+from rich.style import Style
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen, Screen
-from textual.widgets import DataTable, Footer, Header, Static
+from textual.widgets import Footer, OptionList, Static
+from textual.widgets.option_list import Option
 
 from .core import memory as memory_mod
 from .core.projects import Project, delete_project, list_projects
@@ -18,6 +20,22 @@ from .core.sessions import (
     iter_messages,
     list_sessions,
 )
+from .core.stats import compute_stats
+from .palette import (
+    BG,
+    BG_ALT,
+    BG_SEL,
+    CORAL,
+    CORAL_SOFT,
+    CREAM,
+    CREAM_DIM,
+    DANGER,
+    DIM,
+    FAINT,
+    RULE,
+    SPINNER_FRAMES,
+    SPINNER_INTERVAL,
+)
 from .paths import fmt_size
 
 
@@ -26,8 +44,7 @@ def _fmt_time(dt: datetime | None) -> str:
         return "-"
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
-    delta = datetime.now(timezone.utc) - dt
-    secs = int(delta.total_seconds())
+    secs = int((datetime.now(timezone.utc) - dt).total_seconds())
     if secs < 60:
         return f"{secs}s"
     if secs < 3600:
@@ -37,21 +54,123 @@ def _fmt_time(dt: datetime | None) -> str:
     return f"{secs // 86400}d"
 
 
+class HeaderBar(Static):
+    """Two-row header: morphing ✻ spinner + stats."""
+
+    DEFAULT_CSS = f"""
+    HeaderBar {{
+        height: 3;
+        padding: 1 2 0 2;
+        background: {BG_ALT};
+        color: {CREAM_DIM};
+    }}
+    """
+
+    def __init__(self) -> None:
+        # NB: avoid attribute names like `_size`, `_idx`, `_projects` —
+        # textual.Widget reserves several private attrs (_size in particular
+        # backs widget.outer_size). Prefix everything with `_hb_` to stay clear.
+        self._hb_idx = 0
+        self._hb_projects = 0
+        self._hb_sessions = 0
+        self._hb_size = "0B"
+        # Seed initial content via super().__init__(); calling self.update()
+        # inside on_mount races with Static's visual init and leaves
+        # _visual=None, which crashes the first render frame.
+        super().__init__(self._build())
+
+    def on_mount(self) -> None:
+        self.set_interval(SPINNER_INTERVAL, self._tick)
+
+    def set_stats(self, projects: int, sessions: int, size: str) -> None:
+        self._hb_projects = projects
+        self._hb_sessions = sessions
+        self._hb_size = size
+        self.update(self._build())
+
+    def _tick(self) -> None:
+        self._hb_idx = (self._hb_idx + 1) % len(SPINNER_FRAMES)
+        self.update(self._build())
+
+    def _build(self) -> Text:
+        t = Text()
+        t.append(SPINNER_FRAMES[self._hb_idx] + "  ", style=Style(color=CORAL, bold=True))
+        t.append("ccm  ", style=Style(color=CREAM, bold=True))
+        t.append("claude code manager", style=Style(color=DIM))
+        t.append("\n   cwd: ", style=Style(color=DIM))
+        t.append("~/.claude/projects", style=Style(color=CREAM_DIM))
+        t.append("   ·   ", style=Style(color=FAINT))
+        t.append(f"{self._hb_projects} projects", style=Style(color=CREAM_DIM))
+        t.append("   ·   ", style=Style(color=FAINT))
+        t.append(f"{self._hb_sessions} sessions", style=Style(color=CREAM_DIM))
+        t.append("   ·   ", style=Style(color=FAINT))
+        t.append(self._hb_size, style=Style(color=CREAM_DIM))
+        return t
+
+
+def make_project_option(p: Project) -> Option:
+    t = Text()
+    t.append("●  ", style=Style(color=CORAL))
+    t.append(p.real_cwd, style=Style(color=CREAM))
+    t.append("\n   ", style=Style(color=DIM))
+    parts = [
+        f"{p.session_count} session{'s' if p.session_count != 1 else ''}",
+        fmt_size(p.size_bytes),
+    ]
+    if p.has_memory:
+        parts.append("memory")
+    parts.append(_fmt_time(p.last_activity) + " ago")
+    t.append(" · ".join(parts), style=Style(color=DIM))
+    return Option(t, id=p.dir_name)
+
+
+def make_session_option(s: SessionSummary) -> Option:
+    t = Text()
+    t.append("⎿  ", style=Style(color=CORAL))
+    t.append(s.session_id[:8] + "  ", style=Style(color=CORAL_SOFT))
+    title = s.custom_title or (s.first_user_prompt or "")[:70] or s.session_id
+    t.append(title, style=Style(color=CREAM))
+    t.append("\n   ", style=Style(color=DIM))
+    meta = f"{s.message_count} msgs · {fmt_size(s.size_bytes)} · {_fmt_time(s.last_time)} ago"
+    if s.git_branch:
+        meta += f" · {s.git_branch}"
+    t.append(meta, style=Style(color=DIM))
+    return Option(t, id=s.session_id)
+
+
 class ConfirmScreen(ModalScreen[bool]):
     BINDINGS = [
-        Binding("y", "yes", "Yes"),
-        Binding("n,escape", "no", "No"),
+        Binding("y", "yes", "Confirm"),
+        Binding("n,escape", "no", "Cancel"),
     ]
 
-    def __init__(self, message: str):
+    DEFAULT_CSS = f"""
+    ConfirmScreen {{
+        align: center middle;
+        background: rgba(0, 0, 0, 0.55);
+    }}
+    #confirm-box {{
+        width: 64;
+        height: auto;
+        border: thick {CORAL};
+        background: {BG};
+        color: {CREAM_DIM};
+        padding: 1 3;
+    }}
+    """
+
+    def __init__(self, message: str) -> None:
         super().__init__()
         self.message = message
 
     def compose(self) -> ComposeResult:
-        yield Static(
-            f"[bold red]{self.message}[/bold red]\n\nPress [bold]y[/bold] to confirm, [bold]n[/bold] to cancel.",
-            id="confirm-box",
+        body = (
+            f"[bold {CORAL}]✻[/]  [bold {CREAM}]Confirm destructive action[/]\n\n"
+            f"[{CREAM_DIM}]{escape(self.message)}[/]\n\n"
+            f"[{DIM}]Press[/] [bold {CORAL}]y[/] [{DIM}]to confirm  ·  "
+            f"[/][bold {CORAL}]n[/][{DIM}]/[/][bold {CORAL}]esc[/] [{DIM}]to cancel[/]"
         )
+        yield Static(body, id="confirm-box", markup=True)
 
     def action_yes(self) -> None:
         self.dismiss(True)
@@ -61,68 +180,96 @@ class ConfirmScreen(ModalScreen[bool]):
 
 
 class SessionView(Screen):
-    BINDINGS = [
-        Binding("escape,q", "app.pop_screen", "Back"),
-        Binding("j,down", "scroll_down", "Down"),
-        Binding("k,up", "scroll_up", "Up"),
-    ]
+    BINDINGS = [Binding("escape,q", "app.pop_screen", "Back")]
 
-    def __init__(self, session: SessionSummary):
+    DEFAULT_CSS = f"""
+    SessionView {{ background: {BG}; }}
+    SessionView #session-body {{
+        padding: 1 3 2 3;
+        color: {CREAM_DIM};
+    }}
+    """
+
+    def __init__(self, session: SessionSummary) -> None:
         super().__init__()
         self.session = session
 
     def compose(self) -> ComposeResult:
-        yield Header(show_clock=False)
-        body = Static(self._render(), expand=True, markup=True)
-        body.styles.padding = (1, 2)
-        yield body
+        yield HeaderBar()
+        yield Static(self._build_body(), id="session-body", expand=True, markup=True)
         yield Footer()
 
-    def _render(self) -> Text:
+    def _build_body(self) -> str:
         s = self.session
-        out = Text()
-        out.append(f"Session {s.session_id}\n", style="bold cyan")
+        lines: list[str] = []
+        lines.append(
+            f"[bold {CORAL}]✻[/]  [bold {CREAM}]Session[/]  [{CORAL_SOFT}]{escape(s.session_id)}[/]"
+        )
         if s.custom_title:
-            out.append(f"Title: {s.custom_title}\n")
+            lines.append(f"   [{DIM}]title:[/]  [{CREAM_DIM}]{escape(s.custom_title)}[/]")
         if s.cwd:
-            out.append(f"cwd: {s.cwd}\n")
+            lines.append(f"   [{DIM}]cwd:[/]    [{CREAM_DIM}]{escape(s.cwd)}[/]")
         if s.git_branch:
-            out.append(f"branch: {s.git_branch}\n")
-        out.append(f"messages: {s.message_count}\n\n")
+            lines.append(f"   [{DIM}]branch:[/] [{CREAM_DIM}]{escape(s.git_branch)}[/]")
+        lines.append(f"   [{DIM}]msgs:[/]   [{CREAM_DIM}]{s.message_count}[/]")
+        lines.append("")
+
         for ts, role, text in iter_messages(s.path):
-            style = "green" if role == "user" else "yellow"
-            out.append(f"── {role} ", style=style)
-            out.append(f"{ts or ''}\n", style="dim")
-            out.append(text + "\n\n")
-        return out
+            color = CORAL if role == "user" else CORAL_SOFT
+            lines.append(
+                f"[{RULE}]─[/] [bold {color}]{escape(role)}[/] [{FAINT}]{escape(ts or '')}[/]"
+            )
+            lines.append(f"[{CREAM_DIM}]{escape(text)}[/]")
+            lines.append("")
+        return "\n".join(lines)
 
 
 class MemoryView(Screen):
     BINDINGS = [Binding("escape,q", "app.pop_screen", "Back")]
 
-    def __init__(self, project: Project):
+    DEFAULT_CSS = f"""
+    MemoryView {{ background: {BG}; }}
+    MemoryView #memory-body {{
+        padding: 1 3 2 3;
+        color: {CREAM_DIM};
+    }}
+    """
+
+    def __init__(self, project: Project) -> None:
         super().__init__()
         self.project = project
 
     def compose(self) -> ComposeResult:
-        yield Header(show_clock=False)
-        files = memory_mod.list_memory_files(self.project.path)
-        out = Text()
-        out.append(f"Memory for {self.project.real_cwd}\n\n", style="bold cyan")
-        if not files:
-            out.append("(no memory files)\n", style="dim")
-        else:
-            for f in files:
-                out.append(f"── {f.name} ", style="cyan")
-                out.append(f"({fmt_size(f.size_bytes)})\n", style="dim")
-                try:
-                    out.append(f.path.read_text(encoding="utf-8", errors="replace") + "\n\n")
-                except OSError:
-                    out.append("(unreadable)\n\n", style="red")
-        body = Static(out, expand=True, markup=False)
-        body.styles.padding = (1, 2)
-        yield body
+        yield HeaderBar()
+        yield Static(self._build_body(), id="memory-body", expand=True, markup=True)
         yield Footer()
+
+    def _build_body(self) -> str:
+        files = memory_mod.list_memory_files(self.project.path)
+        lines: list[str] = []
+        lines.append(
+            f"[bold {CORAL}]✻[/]  [bold {CREAM}]Memory[/]  "
+            f"[{CORAL}]⎯[/]  [{CREAM_DIM}]{escape(self.project.real_cwd)}[/]"
+        )
+        lines.append("")
+        if not files:
+            lines.append(f"[{DIM}](no memory files)[/]")
+            return "\n".join(lines)
+        for f in files:
+            lines.append(
+                f"[{CORAL}]⎿[/]  [bold {CREAM}]{escape(f.name)}[/]   "
+                f"[{DIM}]({fmt_size(f.size_bytes)})[/]"
+            )
+            try:
+                content = f.path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                lines.append(f"   [{DANGER}](unreadable)[/]")
+                lines.append("")
+                continue
+            for line in content.splitlines():
+                lines.append(f"   [{CREAM_DIM}]{escape(line)}[/]")
+            lines.append("")
+        return "\n".join(lines)
 
 
 class MainScreen(Screen):
@@ -137,182 +284,237 @@ class MainScreen(Screen):
         Binding("l,right", "focus_sessions", "Sessions"),
     ]
 
-    CSS = """
-    #projects { width: 60%; }
-    #sessions { width: 40%; }
-    #status { height: 3; border-top: solid $primary; padding: 0 1; }
-    DataTable { height: 1fr; }
+    DEFAULT_CSS = f"""
+    MainScreen {{ background: {BG}; }}
+
+    #panes {{
+        height: 1fr;
+        padding: 1 1 0 1;
+    }}
+    #projects-pane {{ width: 60%; padding: 0 1; }}
+    #sessions-pane {{ width: 40%; padding: 0 1; }}
+
+    .pane-title {{
+        height: 1;
+        padding: 0 1;
+        color: {DIM};
+    }}
+
+    OptionList {{
+        height: 1fr;
+        background: {BG};
+        color: {CREAM_DIM};
+        border: none;
+        padding: 0;
+        scrollbar-color: {RULE} {BG};
+        scrollbar-background: {BG};
+    }}
+    OptionList > .option-list--option {{
+        padding: 0 1;
+    }}
+    OptionList > .option-list--option-highlighted,
+    OptionList:focus > .option-list--option-highlighted {{
+        background: {BG_SEL};
+    }}
+
+    #status {{
+        height: 1;
+        padding: 0 2;
+        color: {DIM};
+        background: {BG_ALT};
+    }}
+
+    Footer {{
+        background: {BG_ALT};
+        color: {DIM};
+    }}
+    Footer > .footer--key {{
+        color: {CORAL};
+        background: {BG_ALT};
+    }}
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self.projects: list[Project] = []
         self.sessions: list[SessionSummary] = []
         self.current_project: Project | None = None
 
     def compose(self) -> ComposeResult:
-        yield Header(show_clock=False)
-        with Horizontal():
-            with Vertical(id="projects"):
-                yield Static("[bold]Projects[/bold]", id="projects-title")
-                yield DataTable(id="projects-table", cursor_type="row", zebra_stripes=True)
-            with Vertical(id="sessions"):
-                yield Static("[bold]Sessions[/bold]  [dim](select a project)[/dim]", id="sessions-title")
-                yield DataTable(id="sessions-table", cursor_type="row", zebra_stripes=True)
+        yield HeaderBar()
+        with Horizontal(id="panes"):
+            with Vertical(id="projects-pane"):
+                yield Static("Projects", classes="pane-title", id="projects-title")
+                yield OptionList(id="projects-list")
+            with Vertical(id="sessions-pane"):
+                yield Static(
+                    Text("Sessions  ", style=Style(color=DIM))
+                    + Text("⎯  ", style=Style(color=CORAL))
+                    + Text("(select a project)", style=Style(color=FAINT)),
+                    classes="pane-title",
+                    id="sessions-title",
+                )
+                yield OptionList(id="sessions-list")
         yield Static("", id="status")
         yield Footer()
 
     def on_mount(self) -> None:
-        pt: DataTable = self.query_one("#projects-table", DataTable)
-        pt.add_columns("Project", "Sess", "Size", "Mem", "Last")
-        st: DataTable = self.query_one("#sessions-table", DataTable)
-        st.add_columns("ID", "Title", "Msgs", "Size", "Last")
         self.action_refresh()
-        pt.focus()
+        pl = self.query_one("#projects-list", OptionList)
+        pl.focus()
+        if self.projects:
+            pl.highlighted = 0
+
+    # ------------------------------------------------------------- data
+    def _set_status(self, text: str | Text) -> None:
+        self.query_one("#status", Static).update(text)
+
+    def _refresh_header(self) -> None:
+        stats = compute_stats(top_n=0)
+        self.query_one(HeaderBar).set_stats(
+            stats.project_count, stats.session_count, fmt_size(stats.total_size)
+        )
 
     def action_refresh(self) -> None:
         self.projects = list_projects()
-        pt: DataTable = self.query_one("#projects-table", DataTable)
-        pt.clear()
+        pl = self.query_one("#projects-list", OptionList)
+        pl.clear_options()
         for p in self.projects:
-            pt.add_row(
-                p.real_cwd,
-                str(p.session_count),
-                fmt_size(p.size_bytes),
-                "*" if p.has_memory else "",
-                _fmt_time(p.last_activity),
-                key=p.dir_name,
-            )
-        self._set_status(f"{len(self.projects)} projects.")
-        if self.current_project:
-            self._reload_sessions(self.current_project)
+            pl.add_option(make_project_option(p))
+        self._refresh_header()
 
-    def _reload_sessions(self, project: Project) -> None:
+        # Re-sync sessions for currently-tracked project (if it still exists).
+        if self.current_project:
+            match = next(
+                (p for p in self.projects if p.dir_name == self.current_project.dir_name),
+                None,
+            )
+            if match:
+                self._load_sessions(match)
+            else:
+                self.current_project = None
+                self.query_one("#sessions-list", OptionList).clear_options()
+        self._set_status(f"ready · {len(self.projects)} projects")
+
+    def _load_sessions(self, project: Project) -> None:
         self.current_project = project
         self.sessions = list_sessions(project.path)
-        st: DataTable = self.query_one("#sessions-table", DataTable)
-        st.clear()
+        sl = self.query_one("#sessions-list", OptionList)
+        sl.clear_options()
         for s in self.sessions:
-            title = s.custom_title or (s.first_user_prompt or "")[:60]
-            st.add_row(
-                s.session_id[:8],
-                title,
-                str(s.message_count),
-                fmt_size(s.size_bytes),
-                _fmt_time(s.last_time),
-                key=s.session_id,
-            )
-        self.query_one("#sessions-title", Static).update(
-            f"[bold]Sessions[/bold]  [dim]{project.real_cwd}[/dim]"
+            sl.add_option(make_session_option(s))
+        title = (
+            Text("Sessions  ", style=Style(color=DIM))
+            + Text("⎯  ", style=Style(color=CORAL))
+            + Text(project.real_cwd, style=Style(color=CREAM_DIM))
         )
+        self.query_one("#sessions-title", Static).update(title)
 
-    def _selected_project(self) -> Project | None:
-        pt: DataTable = self.query_one("#projects-table", DataTable)
-        if pt.row_count == 0 or pt.cursor_row < 0:
-            return None
-        return self.projects[pt.cursor_row]
+    # ------------------------------------------------------------- events
+    def on_option_list_option_highlighted(self, event: OptionList.OptionHighlighted) -> None:
+        if event.option_list.id == "projects-list":
+            idx = event.option_index
+            if 0 <= idx < len(self.projects):
+                self._load_sessions(self.projects[idx])
 
-    def _selected_session(self) -> SessionSummary | None:
-        st: DataTable = self.query_one("#sessions-table", DataTable)
-        if st.row_count == 0 or st.cursor_row < 0:
-            return None
-        return self.sessions[st.cursor_row]
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        if event.option_list.id == "projects-list":
+            self.action_focus_sessions()
+        elif event.option_list.id == "sessions-list":
+            idx = event.option_index
+            if 0 <= idx < len(self.sessions):
+                self.app.push_screen(SessionView(self.sessions[idx]))
 
-    def _set_status(self, msg: str) -> None:
-        self.query_one("#status", Static).update(msg)
-
-    def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
-        if event.data_table.id != "projects-table":
-            return
-        p = self._selected_project()
-        if p:
-            self._reload_sessions(p)
-
-    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
-        if event.data_table.id == "projects-table":
-            self.query_one("#sessions-table", DataTable).focus()
-        elif event.data_table.id == "sessions-table":
-            s = self._selected_session()
-            if s:
-                self.app.push_screen(SessionView(s))
-
-    def action_select(self) -> None:
-        focused = self.focused
-        if isinstance(focused, DataTable):
-            if focused.id == "projects-table":
-                self.query_one("#sessions-table", DataTable).focus()
-            elif focused.id == "sessions-table":
-                s = self._selected_session()
-                if s:
-                    self.app.push_screen(SessionView(s))
-
+    # ------------------------------------------------------------- actions
     def action_focus_projects(self) -> None:
-        self.query_one("#projects-table", DataTable).focus()
+        self.query_one("#projects-list", OptionList).focus()
 
     def action_focus_sessions(self) -> None:
-        self.query_one("#sessions-table", DataTable).focus()
+        self.query_one("#sessions-list", OptionList).focus()
 
     def action_switch_pane(self) -> None:
-        if isinstance(self.focused, DataTable) and self.focused.id == "projects-table":
+        if isinstance(self.focused, OptionList) and self.focused.id == "projects-list":
             self.action_focus_sessions()
         else:
             self.action_focus_projects()
 
+    def action_select(self) -> None:
+        if not isinstance(self.focused, OptionList):
+            return
+        idx = self.focused.highlighted
+        if idx is None:
+            return
+        if self.focused.id == "projects-list":
+            self.action_focus_sessions()
+        elif self.focused.id == "sessions-list" and 0 <= idx < len(self.sessions):
+            self.app.push_screen(SessionView(self.sessions[idx]))
+
     def action_memory(self) -> None:
-        p = self._selected_project()
-        if p:
-            self.app.push_screen(MemoryView(p))
+        pl = self.query_one("#projects-list", OptionList)
+        idx = pl.highlighted
+        if idx is None or not (0 <= idx < len(self.projects)):
+            return
+        self.app.push_screen(MemoryView(self.projects[idx]))
 
     def action_delete(self) -> None:
         focused = self.focused
-        if not isinstance(focused, DataTable):
+        if not isinstance(focused, OptionList):
             return
-        if focused.id == "projects-table":
-            p = self._selected_project()
-            if not p:
+
+        if focused.id == "projects-list":
+            idx = focused.highlighted
+            if idx is None or not (0 <= idx < len(self.projects)):
                 return
+            project = self.projects[idx]
 
             def after(answer: bool | None) -> None:
                 if answer:
-                    delete_project(p)
-                    self._set_status(f"Deleted project {p.real_cwd}")
-                    if self.current_project and self.current_project.dir_name == p.dir_name:
+                    delete_project(project)
+                    if (
+                        self.current_project
+                        and self.current_project.dir_name == project.dir_name
+                    ):
                         self.current_project = None
                         self.sessions = []
-                        self.query_one("#sessions-table", DataTable).clear()
+                        self.query_one("#sessions-list", OptionList).clear_options()
                     self.action_refresh()
+                    self._set_status(f"deleted project {project.real_cwd}")
 
             self.app.push_screen(
-                ConfirmScreen(f"Delete project {p.real_cwd} ({fmt_size(p.size_bytes)})?"), after
+                ConfirmScreen(
+                    f"Delete project\n{project.real_cwd}\n({project.session_count} sessions · {fmt_size(project.size_bytes)})"
+                ),
+                after,
             )
-        elif focused.id == "sessions-table":
-            s = self._selected_session()
-            if not s or not self.current_project:
+
+        elif focused.id == "sessions-list":
+            idx = focused.highlighted
+            if idx is None or not (0 <= idx < len(self.sessions)) or not self.current_project:
                 return
+            session = self.sessions[idx]
+            project = self.current_project
 
             def after(answer: bool | None) -> None:
                 if answer:
-                    delete_session(s)
-                    self._set_status(f"Deleted session {s.session_id[:8]}")
-                    self._reload_sessions(self.current_project)
+                    delete_session(session)
+                    self._load_sessions(project)
+                    self._refresh_header()
+                    self._set_status(f"deleted session {session.session_id[:8]}")
 
             self.app.push_screen(
-                ConfirmScreen(f"Delete session {s.session_id[:8]} ({fmt_size(s.size_bytes)})?"), after
+                ConfirmScreen(
+                    f"Delete session {session.session_id[:8]}\n({session.message_count} msgs · {fmt_size(session.size_bytes)})"
+                ),
+                after,
             )
 
 
 class CCMApp(App):
     TITLE = "ccm"
-    SUB_TITLE = "Claude Code Manager"
-    CSS = """
-    #confirm-box {
-        align: center middle;
-        width: 60;
-        height: auto;
-        border: thick $error;
-        padding: 1 2;
-        background: $surface;
-    }
+    SUB_TITLE = "claude code manager"
+
+    CSS = f"""
+    Screen {{ background: {BG}; }}
     """
 
     def on_mount(self) -> None:

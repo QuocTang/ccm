@@ -21,6 +21,7 @@ from .core.sessions import (
     list_sessions,
 )
 from .core.stats import compute_stats
+from .palette import CORAL, CORAL_SOFT, CREAM, CREAM_DIM, DANGER, DIM, FAINT
 from .paths import PROJECTS_DIR, fmt_size
 
 app = typer.Typer(
@@ -54,8 +55,8 @@ def _fmt_time(dt: datetime | None) -> str:
 def _require_project(identifier: str):
     p = find_project(identifier)
     if not p:
-        console.print(f"[red]No project matches[/red] '{identifier}'.")
-        console.print("Hint: run [bold]ccm ls[/bold] to see available projects.")
+        console.print(f"[{DANGER}]No project matches[/{DANGER}] '{identifier}'.")
+        console.print(f"[{DIM}]Hint: run[/{DIM}] [bold {CORAL}]ccm ls[/bold {CORAL}] [{DIM}]to see available projects.[/{DIM}]")
         raise typer.Exit(2)
     return p
 
@@ -63,7 +64,7 @@ def _require_project(identifier: str):
 def _require_session(project, session_id: str) -> SessionSummary:
     s = find_session(project.path, session_id)
     if not s:
-        console.print(f"[red]No session matches[/red] '{session_id}' in {project.real_cwd}.")
+        console.print(f"[{DANGER}]No session matches[/{DANGER}] '{session_id}' in {project.real_cwd}.")
         raise typer.Exit(2)
     return s
 
@@ -74,7 +75,7 @@ def main(ctx: typer.Context):
     if ctx.invoked_subcommand is not None:
         return
     if not PROJECTS_DIR.is_dir():
-        console.print(f"[yellow]No Claude projects directory at[/yellow] {PROJECTS_DIR}")
+        console.print(f"[{DANGER}]No Claude projects directory at[/{DANGER}] {PROJECTS_DIR}")
         raise typer.Exit(1)
     from .tui import run_tui
     run_tui()
@@ -97,21 +98,27 @@ def cmd_ls(
         projects = projects[:limit]
 
     if not projects:
-        console.print(f"[yellow]No projects found in[/yellow] {PROJECTS_DIR}")
+        console.print(f"[{DIM}]No projects found in[/{DIM}] {PROJECTS_DIR}")
         return
 
-    table = Table(title=f"Claude Code projects ({len(projects)})", show_lines=False)
-    table.add_column("Project", style="cyan", no_wrap=False)
-    table.add_column("Sessions", justify="right")
-    table.add_column("Size", justify="right")
-    table.add_column("Mem", justify="center")
-    table.add_column("Last activity", justify="right", style="dim")
+    table = Table(
+        title=f"[{CORAL}]✻[/{CORAL}]  Claude Code projects [{DIM}]({len(projects)})[/{DIM}]",
+        show_lines=False,
+        title_justify="left",
+        border_style=DIM,
+        header_style=f"bold {CORAL}",
+    )
+    table.add_column("Project", style=CREAM, no_wrap=False)
+    table.add_column("Sessions", justify="right", style=CREAM_DIM)
+    table.add_column("Size", justify="right", style=CORAL_SOFT)
+    table.add_column("Mem", justify="center", style=CORAL)
+    table.add_column("Last", justify="right", style=DIM)
     for p in projects:
         table.add_row(
             p.real_cwd,
             str(p.session_count),
             fmt_size(p.size_bytes),
-            "*" if p.has_memory else "",
+            "●" if p.has_memory else "",
             _fmt_time(p.last_activity),
         )
     console.print(table)
@@ -121,15 +128,22 @@ def cmd_ls(
 def cmd_show(identifier: str = typer.Argument(..., help="Project path/name or dir name.")):
     p = _require_project(identifier)
     table = Table.grid(padding=(0, 2))
-    table.add_column(style="bold cyan")
-    table.add_column()
+    table.add_column(style=f"bold {DIM}")
+    table.add_column(style=CREAM_DIM)
     table.add_row("Real path", p.real_cwd)
     table.add_row("Encoded dir", p.dir_name)
     table.add_row("Sessions", str(p.session_count))
     table.add_row("Size", fmt_size(p.size_bytes))
     table.add_row("Last activity", _fmt_time(p.last_activity))
     table.add_row("Memory", "yes" if p.has_memory else "no")
-    console.print(Panel(table, title=f"[bold]{p.real_cwd}[/bold]"))
+    console.print(
+        Panel(
+            table,
+            title=f"[{CORAL}]✻[/{CORAL}]  [bold]{p.real_cwd}[/bold]",
+            title_align="left",
+            border_style=CORAL,
+        )
+    )
 
 
 @app.command("sessions", help="List sessions inside a project.")
@@ -142,16 +156,21 @@ def cmd_sessions(
     if limit > 0:
         sessions = sessions[:limit]
     if not sessions:
-        console.print(f"[yellow]No sessions in[/yellow] {project.real_cwd}")
+        console.print(f"[{DIM}]No sessions in[/{DIM}] {project.real_cwd}")
         return
 
-    table = Table(title=f"Sessions for {project.real_cwd} ({len(sessions)})")
-    table.add_column("Session", style="cyan")
-    table.add_column("Title / first prompt", overflow="fold")
-    table.add_column("Msgs", justify="right")
-    table.add_column("Size", justify="right")
-    table.add_column("Branch", style="magenta")
-    table.add_column("Last", justify="right", style="dim")
+    table = Table(
+        title=f"[{CORAL}]⎿[/{CORAL}]  Sessions for [{CREAM_DIM}]{project.real_cwd}[/{CREAM_DIM}] [{DIM}]({len(sessions)})[/{DIM}]",
+        title_justify="left",
+        border_style=DIM,
+        header_style=f"bold {CORAL}",
+    )
+    table.add_column("Session", style=CORAL_SOFT)
+    table.add_column("Title / first prompt", overflow="fold", style=CREAM)
+    table.add_column("Msgs", justify="right", style=CREAM_DIM)
+    table.add_column("Size", justify="right", style=CORAL_SOFT)
+    table.add_column("Branch", style=CORAL)
+    table.add_column("Last", justify="right", style=DIM)
     for s in sessions:
         title = s.custom_title or (s.first_user_prompt or "")[:80]
         table.add_row(
@@ -176,23 +195,30 @@ def cmd_view(
     session = _require_session(project, session_id)
 
     header = Table.grid(padding=(0, 2))
-    header.add_column(style="bold cyan")
-    header.add_column()
+    header.add_column(style=f"bold {DIM}")
+    header.add_column(style=CREAM_DIM)
     header.add_row("Session", session.session_id)
     header.add_row("Title", session.custom_title or "-")
     header.add_row("Branch", session.git_branch or "-")
     header.add_row("Started", str(session.first_time) if session.first_time else "-")
     header.add_row("Ended", str(session.last_time) if session.last_time else "-")
     header.add_row("Messages", str(session.message_count))
-    console.print(Panel(header, title=session.title[:80]))
+    console.print(
+        Panel(
+            header,
+            title=f"[{CORAL}]✻[/{CORAL}]  {session.title[:80]}",
+            title_align="left",
+            border_style=CORAL,
+        )
+    )
 
     shown = 0
     for ts, role, text in iter_messages(session.path):
         if limit and shown >= limit:
-            console.print(f"[dim]... (showing first {limit}; pass --limit 0 for all)[/dim]")
+            console.print(f"[{DIM}]... (showing first {limit}; pass --limit 0 for all)[/{DIM}]")
             break
-        style = "green" if role == "user" else "yellow"
-        console.rule(f"[{style}]{role}[/{style}]  [dim]{ts or ''}[/dim]")
+        style = CORAL if role == "user" else CORAL_SOFT
+        console.rule(f"[{style}]{role}[/{style}]  [{DIM}]{ts or ''}[/{DIM}]", style=DIM)
         if raw:
             console.print(text)
         else:
@@ -211,18 +237,20 @@ def cmd_rm(
     project = _require_project(identifier)
     console.print(
         Panel(
-            f"About to delete [red]{project.path}[/red]\n"
-            f"({project.session_count} sessions, {fmt_size(project.size_bytes)})",
-            title="[red]Destructive operation[/red]",
+            f"About to delete [{DANGER}]{project.path}[/{DANGER}]\n"
+            f"[{DIM}]({project.session_count} sessions, {fmt_size(project.size_bytes)})[/{DIM}]",
+            title=f"[{DANGER}]✻  Destructive operation[/{DANGER}]",
+            title_align="left",
+            border_style=DANGER,
         )
     )
     if not force:
         confirm = typer.confirm("Are you sure?", default=False)
         if not confirm:
-            console.print("[yellow]Cancelled.[/yellow]")
+            console.print(f"[{DIM}]Cancelled.[/{DIM}]")
             raise typer.Exit(1)
     delete_project(project)
-    console.print(f"[green]Deleted[/green] {project.path}")
+    console.print(f"[{CORAL}]●[/{CORAL}] Deleted {project.path}")
 
 
 @app.command("rm-session", help="Delete one session from a project.")
@@ -233,13 +261,16 @@ def cmd_rm_session(
 ):
     project = _require_project(identifier)
     session = _require_session(project, session_id)
-    console.print(f"Deleting session [red]{session.session_id}[/red] ({fmt_size(session.size_bytes)})")
+    console.print(
+        f"Deleting session [{DANGER}]{session.session_id}[/{DANGER}] "
+        f"[{DIM}]({fmt_size(session.size_bytes)})[/{DIM}]"
+    )
     if not force:
         if not typer.confirm("Are you sure?", default=False):
-            console.print("[yellow]Cancelled.[/yellow]")
+            console.print(f"[{DIM}]Cancelled.[/{DIM}]")
             raise typer.Exit(1)
     delete_session(session)
-    console.print(f"[green]Deleted[/green] {session.path}")
+    console.print(f"[{CORAL}]●[/{CORAL}] Deleted {session.path}")
 
 
 @app.command("export", help="Export a session (or all sessions) to markdown/json.")
@@ -252,7 +283,7 @@ def cmd_export(
     project = _require_project(identifier)
     sessions = [_require_session(project, session_id)] if session_id else list_sessions(project.path)
     if not sessions:
-        console.print("[yellow]Nothing to export.[/yellow]")
+        console.print(f"[{DIM}]Nothing to export.[/{DIM}]")
         return
 
     out_is_dir = out.is_dir() or len(sessions) > 1 or not out.suffix
@@ -261,7 +292,7 @@ def cmd_export(
 
     ext = {"md": ".md", "json": ".json", "raw": ".jsonl"}.get(fmt)
     if ext is None:
-        console.print(f"[red]Unknown format[/red] '{fmt}'. Use md | json | raw.")
+        console.print(f"[{DANGER}]Unknown format[/{DANGER}] '{fmt}'. Use md | json | raw.")
         raise typer.Exit(2)
 
     written: list[Path] = []
@@ -274,9 +305,9 @@ def cmd_export(
         else:
             export_mod.export_session_raw(s, dest)
         written.append(dest)
-    console.print(f"[green]Exported {len(written)} session(s)[/green] -> {out}")
+    console.print(f"[{CORAL}]●[/{CORAL}] Exported {len(written)} session(s) -> [{CREAM_DIM}]{out}[/{CREAM_DIM}]")
     for w in written:
-        console.print(f"  - {w}")
+        console.print(f"  [{CORAL}]⎿[/{CORAL}] [{DIM}]{w}[/{DIM}]")
 
 
 @app.command("memory", help="View memory files for a project.")
@@ -289,32 +320,51 @@ def cmd_memory(
 
     if rm:
         if not memory_mod.delete_memory_file(project.path, rm):
-            console.print(f"[red]No such memory file[/red] '{rm}'.")
+            console.print(f"[{DANGER}]No such memory file[/{DANGER}] '{rm}'.")
             raise typer.Exit(2)
-        console.print(f"[green]Deleted[/green] memory/{rm}")
+        console.print(f"[{CORAL}]●[/{CORAL}] Deleted memory/{rm}")
         return
 
     if show:
         d = memory_mod.memory_dir(project.path)
         target = d / show
         if not target.is_file():
-            console.print(f"[red]No such memory file[/red] '{show}'.")
+            console.print(f"[{DANGER}]No such memory file[/{DANGER}] '{show}'.")
             raise typer.Exit(2)
-        console.print(Panel(Markdown(target.read_text(encoding="utf-8")), title=show))
+        console.print(
+            Panel(
+                Markdown(target.read_text(encoding="utf-8")),
+                title=f"[{CORAL}]⎿[/{CORAL}]  {show}",
+                title_align="left",
+                border_style=CORAL,
+            )
+        )
         return
 
     files = memory_mod.list_memory_files(project.path)
     if not files:
-        console.print(f"[yellow]No memory files for[/yellow] {project.real_cwd}")
+        console.print(f"[{DIM}]No memory files for[/{DIM}] {project.real_cwd}")
         return
 
     index = memory_mod.read_index(project.path)
     if index:
-        console.print(Panel(Markdown(index), title="MEMORY.md"))
+        console.print(
+            Panel(
+                Markdown(index),
+                title=f"[{CORAL}]✻[/{CORAL}]  MEMORY.md",
+                title_align="left",
+                border_style=CORAL,
+            )
+        )
 
-    table = Table(title=f"Memory files ({len(files)})")
-    table.add_column("Name", style="cyan")
-    table.add_column("Size", justify="right")
+    table = Table(
+        title=f"[{CORAL}]⎿[/{CORAL}]  Memory files [{DIM}]({len(files)})[/{DIM}]",
+        title_justify="left",
+        border_style=DIM,
+        header_style=f"bold {CORAL}",
+    )
+    table.add_column("Name", style=CREAM)
+    table.add_column("Size", justify="right", style=CORAL_SOFT)
     for f in files:
         table.add_row(f.name, fmt_size(f.size_bytes))
     console.print(table)
@@ -324,28 +374,45 @@ def cmd_memory(
 def cmd_stats():
     s = compute_stats()
     summary = Table.grid(padding=(0, 2))
-    summary.add_column(style="bold cyan")
-    summary.add_column()
+    summary.add_column(style=f"bold {DIM}")
+    summary.add_column(style=CREAM_DIM)
     summary.add_row("Projects", str(s.project_count))
     summary.add_row("Sessions", str(s.session_count))
     summary.add_row("Total size", fmt_size(s.total_size))
     summary.add_row("With memory", str(s.with_memory))
-    console.print(Panel(summary, title="[bold]Claude Code disk usage[/bold]"))
+    console.print(
+        Panel(
+            summary,
+            title=f"[{CORAL}]✻[/{CORAL}]  Claude Code disk usage",
+            title_align="left",
+            border_style=CORAL,
+        )
+    )
 
     if s.top_by_size:
-        t = Table(title="Top by size")
-        t.add_column("Project", style="cyan")
-        t.add_column("Size", justify="right")
-        t.add_column("Sessions", justify="right")
+        t = Table(
+            title=f"[{CORAL}]⎿[/{CORAL}]  Top by size",
+            title_justify="left",
+            border_style=DIM,
+            header_style=f"bold {CORAL}",
+        )
+        t.add_column("Project", style=CREAM)
+        t.add_column("Size", justify="right", style=CORAL_SOFT)
+        t.add_column("Sessions", justify="right", style=CREAM_DIM)
         for p in s.top_by_size:
             t.add_row(p.real_cwd, fmt_size(p.size_bytes), str(p.session_count))
         console.print(t)
 
     if s.top_by_sessions:
-        t = Table(title="Top by sessions")
-        t.add_column("Project", style="cyan")
-        t.add_column("Sessions", justify="right")
-        t.add_column("Size", justify="right")
+        t = Table(
+            title=f"[{CORAL}]⎿[/{CORAL}]  Top by sessions",
+            title_justify="left",
+            border_style=DIM,
+            header_style=f"bold {CORAL}",
+        )
+        t.add_column("Project", style=CREAM)
+        t.add_column("Sessions", justify="right", style=CREAM_DIM)
+        t.add_column("Size", justify="right", style=CORAL_SOFT)
         for p in s.top_by_sessions:
             t.add_row(p.real_cwd, str(p.session_count), fmt_size(p.size_bytes))
         console.print(t)
