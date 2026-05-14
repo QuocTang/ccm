@@ -606,6 +606,12 @@ section { position: relative; }
   transition: transform 0.45s var(--ease-out), box-shadow 0.45s var(--ease-out), background 0.3s ease;
   position: relative;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.feature-card .chip {
+  margin-top: auto;
+  align-self: flex-start;
 }
 .feature-card::before {
   content: "";
