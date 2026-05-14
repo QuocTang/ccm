@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/logo.png" alt="ccm" height="160" />
+<img src="https://raw.githubusercontent.com/QuocTang/ccm/main/assets/logo.png" alt="ccm" height="160" />
 
 **Claude Code Manager** — a CLI + TUI for everything Claude Code stores under `~/.claude/projects/`.
 
