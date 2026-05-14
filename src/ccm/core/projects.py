@@ -63,23 +63,41 @@ def list_projects() -> list[Project]:
     return out
 
 
+def _is_inside(path: Path, parent: Path) -> bool:
+    """True if `path` (resolved) is `parent` or any descendant of it."""
+    try:
+        path.resolve().relative_to(parent.resolve())
+        return True
+    except ValueError:
+        return False
+
+
 def find_project(identifier: str) -> Project | None:
-    """Match by exact dir name, exact real cwd, or unique path suffix."""
+    """Match by exact dir name, exact real cwd, or unique path suffix.
+
+    The `identifier` is treated as an opaque label, not a path: separators and
+    parent refs would let `PROJECTS_DIR / identifier` escape the projects root
+    (e.g. `/etc`, `../..`), which would then cascade into `delete_project` →
+    `shutil.rmtree` outside the intended root.
+    """
     if not PROJECTS_DIR.is_dir():
         return None
+    if "/" in identifier or "\\" in identifier or identifier in ("..", "."):
+        return None
     direct = PROJECTS_DIR / identifier
-    if direct.is_dir():
+    if direct.is_dir() and _is_inside(direct, PROJECTS_DIR):
         return load_project(direct)
     candidates = list_projects()
-    # exact real path
     for p in candidates:
         if p.real_cwd == identifier:
             return p
-    # suffix match (e.g. "axiaxa-pet" matches /home/quoctang/HUTECH/axiaxa-pet)
-    suffix_hits = [p for p in candidates if p.real_cwd.endswith("/" + identifier) or Path(p.real_cwd).name == identifier]
+    suffix_hits = [
+        p
+        for p in candidates
+        if p.real_cwd.endswith("/" + identifier) or Path(p.real_cwd).name == identifier
+    ]
     if len(suffix_hits) == 1:
         return suffix_hits[0]
-    # substring (last resort, only if unique)
     sub_hits = [p for p in candidates if identifier in p.real_cwd or identifier in p.dir_name]
     if len(sub_hits) == 1:
         return sub_hits[0]
@@ -87,4 +105,10 @@ def find_project(identifier: str) -> Project | None:
 
 
 def delete_project(project: Project) -> None:
+    # Defence in depth: refuse to rmtree anything outside ~/.claude/projects/,
+    # even if a caller constructs a Project by hand with a crafted path.
+    if not _is_inside(project.path, PROJECTS_DIR):
+        raise ValueError(
+            f"refusing to delete {project.path}: not inside {PROJECTS_DIR}"
+        )
     shutil.rmtree(project.path)

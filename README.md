@@ -95,7 +95,7 @@ ccm tui                     # launch TUI explicitly
 ```
 
 `<project>` accepts an encoded dir name, the real `cwd` path, the basename
-(e.g. `axiaxa-pet`), or any unique substring of either.
+(e.g. `my-project`), or any unique substring of either.
 
 `<session>` accepts the full UUID or a unique prefix (the 8-char head shown
 by `ccm sessions` is usually enough).
@@ -157,13 +157,6 @@ uv tool install . --force --reinstall                         # rebuild global `
 See [`CLAUDE.md`](CLAUDE.md) for architecture notes and the textual / typer
 gotchas we hit (lossy path encoding, `Widget._size` shadowing, markup escaping,
 etc).
-
-## Design exploration
-
-Four visual directions were prototyped before settling on the Claude Code-style
-coral theme — open [`mockups/index.html`](mockups/index.html) in a browser to
-flip through V1 (Minimal Mono), V2 (Classic Dark), V3 (Vibrant Neon), V4
-(Catppuccin Pastel), and V5 (Claude Code).
 
 ## Contributing
 

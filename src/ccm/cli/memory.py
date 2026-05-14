@@ -30,9 +30,8 @@ def cmd_memory(
         return
 
     if show:
-        d = memory_mod.memory_dir(project.path)
-        target = d / show
-        if not target.is_file():
+        target = memory_mod.resolve_memory_file(project.path, show)
+        if target is None or not target.is_file():
             console.print(f"[{DANGER}]No such memory file[/{DANGER}] '{show}'.")
             raise typer.Exit(2)
         console.print(

@@ -4,7 +4,7 @@ import ast
 import json
 from collections import Counter
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -150,7 +150,10 @@ def summarize_session(jsonl_path: Path) -> SessionSummary:
 
 def list_sessions(project_dir: Path) -> list[SessionSummary]:
     out = [summarize_session(f) for f in project_dir.glob("*.jsonl")]
-    out.sort(key=lambda s: s.last_time or datetime.min, reverse=True)
+    out.sort(
+        key=lambda s: s.last_time or datetime.min.replace(tzinfo=timezone.utc),
+        reverse=True,
+    )
     return out
 
 

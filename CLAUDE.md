@@ -96,7 +96,3 @@ These bit us during development — don't relearn them:
 - `pyproject.toml` sets `pythonpath = ["src"]` so test files can `from ccm...`
   directly without installing.
 
-## Reference artifacts
-
-- `mockups/index.html` — preview of 4 visual-theme directions (V1–V5). V5
-  (Claude Code coral) is the one shipped in code. Open in a browser to compare.
